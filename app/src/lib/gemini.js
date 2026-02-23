@@ -360,10 +360,91 @@ export async function generateRoadmap(role, knownSkills, gapSkills, level = 'Beg
         const completion = await safeAICall([{ role: "user", content: prompt }], { temperature: 0.8 });
 
         const text = completion.choices[0].message.content;
-        return parseJSON(text) || { nodes: [] };
+        const parsed = parseJSON(text);
+        if (parsed && parsed.nodes && parsed.nodes.length > 0) return parsed;
+        throw new Error("Empty or invalid roadmap generated");
     } catch (error) {
-        console.error("AI Roadmap Error:", error);
-        return { nodes: [] };
+        console.error("AI Roadmap Error - Loading Survival Roadmap:", error);
+        // Robust Survival Roadmap Fallback
+        return {
+            nodes: [
+                {
+                    id: "1",
+                    title: `Phase 1: ${role} Essentials`,
+                    status: "active",
+                    x: 200,
+                    y: 300,
+                    subNodes: [
+                        {
+                            id: "1-1",
+                            title: "Foundational Concepts",
+                            tasks: [
+                                {
+                                    title: `Introduction to ${role}`,
+                                    detail: "Start with the core mental models.",
+                                    resources: [
+                                        { type: "video", title: "Getting Started Guide", url: `https://www.youtube.com/results?search_query=${role}+for+beginners` },
+                                        { type: "doc", title: "Official Overview", url: `https://www.google.com/search?q=${role}+core+documentation` }
+                                    ],
+                                    breakdown: "Bhai, tension mat lo! Shuruat hamesha basic se hoti hai. Hum is role ke fundamental pillars ko samjhenge.",
+                                    practice: { question: `Explain the main goal of a ${role} in one sentence.`, hint: "Think about the primary value they provide." }
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    id: "2",
+                    title: "Phase 2: Core Engineering & Tools",
+                    status: "locked",
+                    x: 600,
+                    y: 300,
+                    subNodes: [
+                        {
+                            id: "2-1",
+                            title: "Professional Tooling",
+                            tasks: [
+                                {
+                                    title: "Mastering the Workflow",
+                                    detail: "Set up your environment like a pro.",
+                                    resources: [
+                                        { type: "video", title: "Tooling Tutorial", url: `https://www.youtube.com/results?search_query=${role}+tools+setup` },
+                                        { type: "doc", title: "Workflow Guide", url: `https://www.google.com/search?q=${role}+workflow+best+practices` }
+                                    ],
+                                    breakdown: "Ab asli kaam shuru! Hum dekhenge ki ek expert kaise apne tools aur setup ko optimize karta hai.",
+                                    practice: { question: "List 3 essential tools you need for this roadmap.", hint: "Think IDEs, CLI tools, or specific frameworks." }
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    id: "3",
+                    title: "Phase 3: The Capstone Launch",
+                    status: "locked",
+                    x: 1000,
+                    y: 300,
+                    subNodes: [
+                        {
+                            id: "3-1",
+                            title: "Final Build",
+                            tasks: [
+                                {
+                                    title: "Project Architecture",
+                                    detail: "Apply everything to a real-world scenario.",
+                                    resources: [
+                                        { type: "video", title: "Project Case Study", url: `https://www.youtube.com/results?search_query=${role}+project+architecture` },
+                                        { type: "doc", title: "Scale Guide", url: `https://www.google.com/search?q=${role}+scaling+and+deployment` }
+                                    ],
+                                    breakdown: "Yeh hai aapka test! Ab tak jo seekha, use ek solid project mein badalne ka waqt aa gaya hai.",
+                                    practice: { question: "Sketch the architecture of your final project.", hint: "Divide it into small modules." }
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        };
     }
 }
 

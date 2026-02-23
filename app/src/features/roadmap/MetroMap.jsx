@@ -301,7 +301,7 @@ export function MetroMap() {
 
     if (!roadmap) return null
 
-    const allNodesDone = roadmap.nodes?.every(n => n.status === 'completed') || false;
+    const allNodesDone = roadmap.nodes && roadmap.nodes.length > 0 && roadmap.nodes.every(n => n.status === 'completed');
 
     const toggleNode = (nodeId) => {
         // Allow interaction even if all nodes are done. 
