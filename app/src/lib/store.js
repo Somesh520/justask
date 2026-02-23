@@ -8,7 +8,7 @@ import { create } from 'zustand';
 import { db } from './firebase'; // Ensure db is correctly imported from your firebase.js
 import { doc, writeBatch, Timestamp, collection, query, orderBy, limit, onSnapshot, getDoc, setDoc, runTransaction, increment, deleteDoc } from 'firebase/firestore'; // Import necessary Firestore functions
 
-import { generateRoadmap, parseCareerGoal, generateQuestions, generateManifest } from './gemini';
+import { generateRoadmap, parseCareerGoal, generateQuestions, generateManifest, generateNextQuestion } from './gemini';
 // Assuming uuidv4 is still used for session IDs; if not, use generateId for consistency.
 // import { v4 as uuidv4 } from 'uuid'; // User will need to install this or we use a simple random string
 
@@ -468,73 +468,152 @@ export const useStore = create((set, get) => ({
         get().syncToFirestore(); // Sync after questions are set (initial setup)
     },
 
-    answerQuestion: (skill, knowIt) => {
-        set((state) => {
-            const session = state.sessions[state.activeSessionId];
-            if (!session) return {};
+    answerQuestion: (skill, selectedOptionIndex) => {
+        const state = get();
+        const session = state.sessions[state.activeSessionId];
+        if (!session) return;
 
-            const newKnown = knowIt ? [...session.knownSkills, skill] : session.knownSkills;
-            const newGap = !knowIt ? [...session.gapSkills, skill] : session.gapSkills;
-            const nextIndex = session.currentQuestionIndex + 1;
+        const currentQ = session.questions[session.currentQuestionIndex];
+        const isCorrect = currentQ && selectedOptionIndex === currentQ.correctAnswer;
 
-            if (nextIndex >= session.questions.length) {
-                // Assessment complete, prepare for roadmap generation
-                const updatedSession = {
-                    ...session,
-                    knownSkills: newKnown,
-                    gapSkills: newGap,
-                    currentQuestionIndex: nextIndex,
-                    phase: 'roadmap' // Optimistically set phase to show loading
-                };
+        const newKnown = isCorrect ? [...session.knownSkills, skill] : session.knownSkills;
+        const newGap = !isCorrect ? [...session.gapSkills, skill] : session.gapSkills;
 
-                // Optimistic update
-                set(state => ({
-                    sessions: {
-                        ...state.sessions,
-                        [state.activeSessionId]: updatedSession
+        const answers = [...(session.answers || []), {
+            questionId: currentQ?.id,
+            skill,
+            selectedOptionIndex,
+            isCorrect,
+            difficulty: currentQ?.difficulty
+        }];
+
+        // Stop after 8 questions
+        if (answers.length >= 8) {
+            const correctCount = answers.filter(a => a.isCorrect).length;
+            const ratio = correctCount / answers.length;
+
+            let level = 'Beginner';
+            if (ratio >= 0.7) level = 'Advanced';
+            else if (ratio >= 0.4) level = 'Intermediate';
+
+            set(s => ({
+                sessions: {
+                    ...s.sessions,
+                    [s.activeSessionId]: {
+                        ...s.sessions[s.activeSessionId],
+                        knownSkills: newKnown,
+                        gapSkills: newGap,
+                        score: correctCount,
+                        totalAnswered: answers.length,
+                        level,
+                        phase: 'level-summary'
                     }
-                }));
-                get().syncToFirestore(); // Sync after assessment completion and phase update
+                }
+            }));
+            get().syncToFirestore();
+            return;
+        }
 
-                // Asynchronously generate roadmap and update state again
-                generateRoadmap(session.role, newKnown, newGap).then(roadmap => {
-                    set(s => {
-                        if (!s.sessions[s.activeSessionId]) return {}; // Session might have changed or been deleted
+        // Adaptive difficulty: correct → harder, wrong → easier
+        const currentDiff = currentQ?.difficulty || 'easy';
+        let nextDiff;
+        if (isCorrect) {
+            nextDiff = currentDiff === 'easy' ? 'medium' : currentDiff === 'medium' ? 'hard' : 'hard';
+        } else {
+            nextDiff = currentDiff === 'hard' ? 'medium' : currentDiff === 'medium' ? 'easy' : 'easy';
+        }
 
-                        const sessionsAfterRoadmap = {
-                            ...s.sessions,
-                            [s.activeSessionId]: {
-                                ...s.sessions[s.activeSessionId],
-                                roadmap,
-                                phase: 'roadmap' // Ensure phase is roadmap
-                            }
-                        };
-                        return { sessions: sessionsAfterRoadmap };
-                    });
-                    get().syncToFirestore(); // Sync after roadmap is generated and added to state
-                    get().publishBlueprint(get().activeSessionId); // Automatically integrate into exchange
-                }).catch(err => {
-                    console.error("Error generating roadmap:", err);
-                    // TODO: Handle error, perhaps revert phase
-                });
-
-                return {}; // State already updated by the initial set()
-            }
-
-            // Still in assessment phase
-            const updatedSessions = {
-                ...state.sessions,
-                [state.activeSessionId]: {
-                    ...session,
+        // Set generating state
+        set(s => ({
+            sessions: {
+                ...s.sessions,
+                [s.activeSessionId]: {
+                    ...s.sessions[s.activeSessionId],
                     knownSkills: newKnown,
                     gapSkills: newGap,
-                    currentQuestionIndex: nextIndex
+                    answers,
+                    generatingQuestion: true
                 }
-            };
-            return { sessions: updatedSessions };
+            }
+        }));
+
+        // Generate next question from AI
+        const previousSkills = answers.map(a => a.skill);
+        generateNextQuestion(session.role, previousSkills, nextDiff, answers.length + 1).then(nextQ => {
+            if (!nextQ) {
+                console.error("Failed to generate next question");
+                return;
+            }
+            set(s => {
+                const sess = s.sessions[s.activeSessionId];
+                if (!sess) return {};
+                const updatedQuestions = [...sess.questions, nextQ];
+                return {
+                    sessions: {
+                        ...s.sessions,
+                        [s.activeSessionId]: {
+                            ...sess,
+                            questions: updatedQuestions,
+                            currentQuestionIndex: updatedQuestions.length - 1,
+                            generatingQuestion: false
+                        }
+                    }
+                };
+            });
+        }).catch(err => {
+            console.error("Error generating next question:", err);
+            set(s => ({
+                sessions: {
+                    ...s.sessions,
+                    [s.activeSessionId]: {
+                        ...s.sessions[s.activeSessionId],
+                        generatingQuestion: false
+                    }
+                }
+            }));
         });
-        // No sync for individual answerQuestion unless it's the last one (handled above)
     },
+
+    proceedToRoadmap: () => {
+        const state = get();
+        const session = state.sessions[state.activeSessionId];
+        if (!session) return;
+
+        const { role, knownSkills, gapSkills, level } = session;
+
+        // Set phase to roadmap (loading state)
+        set(s => ({
+            sessions: {
+                ...s.sessions,
+                [s.activeSessionId]: {
+                    ...s.sessions[s.activeSessionId],
+                    phase: 'roadmap'
+                }
+            }
+        }));
+
+        // Generate personalized roadmap
+        generateRoadmap(role, knownSkills || [], gapSkills || [], level || 'Beginner').then(roadmap => {
+            set(s => {
+                if (!s.sessions[s.activeSessionId]) return {};
+                return {
+                    sessions: {
+                        ...s.sessions,
+                        [s.activeSessionId]: {
+                            ...s.sessions[s.activeSessionId],
+                            roadmap,
+                            phase: 'roadmap'
+                        }
+                    }
+                };
+            });
+            get().syncToFirestore();
+            get().publishBlueprint(get().activeSessionId);
+        }).catch(err => {
+            console.error("Error generating roadmap:", err);
+        });
+    },
+
 
     submitEvidence: (nodeId, subNodeId, taskIndex, evidence) => {
         set((state) => {
@@ -845,6 +924,34 @@ export const useStore = create((set, get) => ({
             };
         });
         get().syncToFirestore(); // Sync remaining state (engagement metrics)
+    },
+
+    deleteAllSessions: async () => {
+        const state = get();
+        const sessionIds = Object.keys(state.sessions);
+
+        // Delete all from Firestore
+        if (state.user?.uid && db) {
+            try {
+                for (const id of sessionIds) {
+                    const roadmapRef = doc(db, "users", state.user.uid, "goals", id);
+                    await deleteDoc(roadmapRef);
+                }
+                console.log("All goals removed from cloud storage.");
+            } catch (err) {
+                console.error("Cloud bulk deletion failed:", err);
+            }
+        }
+
+        set(state => ({
+            sessions: {},
+            activeSessionId: null,
+            engagementMetrics: {
+                ...state.engagementMetrics,
+                totalProjects: 0
+            }
+        }));
+        get().syncToFirestore();
     },
 
     reset: () => set({

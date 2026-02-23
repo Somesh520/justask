@@ -75,21 +75,46 @@ export async function parseCareerGoal(goal) {
 }
 
 export async function generateQuestions(role) {
+    // Generate just the FIRST question to kick off the adaptive quiz
+    const firstQ = await generateNextQuestion(role, [], 'easy', 1);
+    return firstQ ? [firstQ] : [];
+}
+
+/**
+ * Generates a single MCQ question based on context.
+ * @param {string} role - The career role
+ * @param {Array} previousSkills - Skills already tested (to avoid duplicates)
+ * @param {string} difficulty - Target difficulty: "easy", "medium", "hard"
+ * @param {number} questionNumber - Current question number (1-8)
+ */
+export async function generateNextQuestion(role, previousSkills = [], difficulty = 'easy', questionNumber = 1) {
     const { apiConfig } = useStore.getState();
+    const avoidList = previousSkills.length > 0 ? `\nDO NOT ask about these skills (already tested): ${previousSkills.join(', ')}` : '';
 
     const prompt = `
-    Create a binary skill assessment for a "${role}".
-    Generate exactly 10 YES/NO questions to test foundational knowledge.
+    Generate exactly 1 multiple-choice question for a "${role}" skill assessment.
+    Difficulty: ${difficulty.toUpperCase()}
+    Question number: ${questionNumber} of 8
+    ${avoidList}
     
-    Output strictly JSON in this format:
-    [
-      {
-        "id": "unique_id",
-        "skill": "Specific Skill Name",
-        "question": "A technical yes/no question?",
-        "context": "One sentence explaining why this skill matters."
-      }
-    ]
+    Difficulty guidelines:
+    - EASY: Basic concepts, definitions, fundamentals that every beginner should know
+    - MEDIUM: Practical application, intermediate concepts, real-world scenarios
+    - HARD: Advanced architecture, optimization, edge cases, expert-level knowledge
+    
+    Output strictly JSON (single object, NOT an array):
+    {
+      "id": "q${questionNumber}",
+      "skill": "Specific Skill Name",
+      "question": "A clear, specific technical question?",
+      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "correctAnswer": 0,
+      "context": "One sentence explaining why this matters.",
+      "difficulty": "${difficulty}"
+    }
+    
+    "correctAnswer" is the zero-based index (0-3) of the correct option.
+    Make the question practical and test real understanding, not just memorization.
   `;
 
     try {
@@ -100,10 +125,13 @@ export async function generateQuestions(role) {
         });
 
         const text = completion.choices[0].message.content;
-        return parseJSON(text) || [];
+        const parsed = parseJSON(text);
+        // Handle if API returns an array instead of object
+        if (Array.isArray(parsed)) return parsed[0] || null;
+        return parsed || null;
     } catch (error) {
         console.error("AI Question Error:", error?.response?.data || error?.message || error);
-        return [];
+        return null;
     }
 }
 
@@ -151,13 +179,19 @@ export async function generateTailoringQuestions(goal, nodes) {
     }
 }
 
-export async function generateRoadmap(role, knownSkills, gapSkills) {
+export async function generateRoadmap(role, knownSkills, gapSkills, level = 'Beginner') {
     const { apiConfig } = useStore.getState();
 
     const prompt = `
     Create a non-linear learning roadmap for a "${role}".
+    User Level: ${level}.
     User KNOWS: ${knownSkills.join(', ')}.
     User NEEDS: ${gapSkills.join(', ')}.
+
+    IMPORTANT: The user is a ${level}. Tailor the roadmap depth and resource difficulty accordingly:
+    - Beginner: Focus on fundamentals, step-by-step tutorials, beginner-friendly resources.
+    - Intermediate: Skip basics, focus on practical projects and deeper concepts.
+    - Advanced: Focus on architecture, best practices, advanced patterns, and real-world challenges.
 
     Generate a Metro Map style roadmap with exactly 6-8 Main Nodes.
     
@@ -416,7 +450,7 @@ export async function verifyGauntletSubmission(challenge, submission) {
 
 
 // Explain a specific task concept (Mocked or Real)
-export async function explainConcept(task, messages, goal) {
+export async function explainConcept(task, messages, goal, language = 'English') {
     const { apiConfig } = useStore.getState();
 
     const prompt = `
@@ -432,6 +466,7 @@ export async function explainConcept(task, messages, goal) {
     ${messages.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n')}
     
     Guidelines:
+    Respond strictly in the following language: ${language}. (If the language is Hinglish, please use a natural mix of Hindi and English written in Latin script, as commonly used in informal conversations).
     - Be concise, encouraging, and practical.
     - Use analogies.
     - If user asks for code, provide a short, clean snippet.

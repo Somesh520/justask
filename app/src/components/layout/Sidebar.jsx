@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Menu, X, ChevronRight, Plus, Globe, Share2 } from 'lucide-react'
+import { Menu, X, ChevronRight, Plus, Globe, Share2, Trash2 } from 'lucide-react'
 import { useStore } from '../../lib/store'
 import { useSound } from '../../hooks/useSound'
 
@@ -9,6 +9,7 @@ export function Sidebar() {
     const { sessions, activeSessionId, switchSession, reset, showExchange, setShowExchange } = useStore()
     const { playClunk } = useSound()
     const [shakeId, setShakeId] = useState(null)
+    const [confirmClearAll, setConfirmClearAll] = useState(false)
 
     // Sort sessions by creation time desc
     const sessionList = Object.values(sessions).sort((a, b) =>
@@ -115,6 +116,50 @@ export function Sidebar() {
                                 <Globe size={20} strokeWidth={3} />
                                 ROADMAP EXCHANGE
                             </motion.button>
+
+                            {/* Clear All Sessions */}
+                            {sessionList.length > 1 && (
+                                <AnimatePresence>
+                                    {!confirmClearAll ? (
+                                        <motion.button
+                                            whileHover={{ scale: 1.02 }}
+                                            whileTap={{ scale: 0.98 }}
+                                            onClick={() => setConfirmClearAll(true)}
+                                            className="w-full flex items-center justify-center gap-2 p-3 bg-brutal-red text-white border-4 border-black shadow-[4px_4px_0px_0px_#000] hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all font-black uppercase text-xs italic"
+                                        >
+                                            <Trash2 size={18} strokeWidth={3} />
+                                            EJECT ALL DISKS ({sessionList.length})
+                                        </motion.button>
+                                    ) : (
+                                        <motion.div
+                                            initial={{ opacity: 0, y: -10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            exit={{ opacity: 0, y: -10 }}
+                                            className="w-full p-4 bg-brutal-red border-4 border-black shadow-[4px_4px_0px_0px_#000]"
+                                        >
+                                            <p className="font-black text-white text-xs uppercase text-center mb-3">⚠️ DELETE ALL {sessionList.length} GOALS?</p>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => setConfirmClearAll(false)}
+                                                    className="flex-1 p-2 bg-white border-3 border-black font-black text-xs uppercase shadow-[2px_2px_0px_0px_#000] hover:shadow-none hover:translate-y-0.5 transition-all"
+                                                >
+                                                    CANCEL
+                                                </button>
+                                                <button
+                                                    onClick={async () => {
+                                                        await useStore.getState().deleteAllSessions();
+                                                        setConfirmClearAll(false);
+                                                        setIsOpen(false);
+                                                    }}
+                                                    className="flex-1 p-2 bg-black text-white border-3 border-white font-black text-xs uppercase shadow-[2px_2px_0px_0px_#fff] hover:shadow-none hover:translate-y-0.5 transition-all"
+                                                >
+                                                    EJECT ALL
+                                                </button>
+                                            </div>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+                            )}
 
                             {/* Review Queue Widget */}
                             {useStore.getState().reviewQueue?.length > 0 && (

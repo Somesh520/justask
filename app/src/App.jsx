@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 // Your existing component imports
 import { GoalInput } from './features/landing/GoalInput';
-import { SwipeStack } from './features/assessment/SwipeStack';
+import { SwipeStack, LevelSummary } from './features/assessment/SwipeStack';
 import { MetroMap } from './features/roadmap/MetroMap';
 import { parseCareerGoal, generateQuestions } from './lib/gemini';
 import { Sidebar } from './components/layout/Sidebar';
@@ -403,17 +403,22 @@ function App() {
               <button
                 onClick={() => setTheme('default')}
                 className={`w-6 h-6 border-2 border-black transition-all hover:scale-110 bg-white ${theme === 'default' ? 'ring-2 ring-brutal-yellow' : ''}`}
-                title="Default Theme"
+                title="Light"
               />
               <button
-                onClick={() => setTheme('hacker')}
-                className={`w-6 h-6 border-2 border-black transition-all hover:scale-110 bg-[#00ff41] ${theme === 'hacker' ? 'ring-2 ring-white' : ''}`}
-                title="Hacker Theme"
+                onClick={() => setTheme('dracula')}
+                className={`w-6 h-6 border-2 border-black transition-all hover:scale-110 bg-[#bd93f9] ${theme === 'dracula' ? 'ring-2 ring-white' : ''}`}
+                title="Dracula"
               />
               <button
-                onClick={() => setTheme('cyberpunk')}
-                className={`w-6 h-6 border-2 border-black shadow-brutal transition-all hover:scale-110 bg-[#e94560] ${theme === 'cyberpunk' ? 'ring-2 ring-white' : ''}`}
-                title="Cyberpunk Theme"
+                onClick={() => setTheme('nord')}
+                className={`w-6 h-6 border-2 border-black transition-all hover:scale-110 bg-[#88c0d0] ${theme === 'nord' ? 'ring-2 ring-white' : ''}`}
+                title="Nord"
+              />
+              <button
+                onClick={() => setTheme('monokai')}
+                className={`w-6 h-6 border-2 border-black transition-all hover:scale-110 bg-[#f92672] ${theme === 'monokai' ? 'ring-2 ring-white' : ''}`}
+                title="Monokai"
               />
             </div>
           )}
@@ -628,6 +633,10 @@ function App() {
 
                 {(phase === 'assessment' || phase === 'blueprint-assessment') && (
                   <SwipeStack isTailoring={phase === 'blueprint-assessment'} />
+                )}
+
+                {phase === 'level-summary' && (
+                  <LevelSummary />
                 )}
 
                 {phase === 'roadmap' && (

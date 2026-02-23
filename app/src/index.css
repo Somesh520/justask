@@ -24,26 +24,49 @@
   --accent-primary: var(--color-brutal-yellow);
 }
 
-[data-theme='hacker'] {
-  --bg-main: #0a0a0a;
-  --text-main: #00ff41;
-  --accent-primary: #00ff41;
-  --color-brutal-white: #0a0a0a;
-  --color-brutal-black: #00ff41;
-  --color-brutal-blue: #003b00;
-  --color-brutal-yellow: #00ff41;
-  background-color: #0a0a0a;
+[data-theme='dracula'] {
+  --bg-main: #282a36;
+  --text-main: #f8f8f2;
+  --accent-primary: #bd93f9;
+  --color-brutal-white: #282a36;
+  --color-brutal-black: #f8f8f2;
+  --color-brutal-red: #ff5555;
+  --color-brutal-blue: #6272a4;
+  --color-brutal-yellow: #f1fa8c;
+  --color-brutal-green: #50fa7b;
+  --shadow-brutal: 4px 4px 0px 0px #44475a;
+  background-color: #282a36;
+  color: #f8f8f2;
 }
 
-[data-theme='cyberpunk'] {
-  --bg-main: #1a1a2e;
-  --text-main: #e94560;
-  --accent-primary: #0f3460;
-  --color-brutal-white: #1a1a2e;
-  --color-brutal-black: #e94560;
-  --color-brutal-blue: #16213e;
-  --color-brutal-yellow: #f9d423;
-  background-color: #1a1a2e;
+[data-theme='nord'] {
+  --bg-main: #2e3440;
+  --text-main: #eceff4;
+  --accent-primary: #88c0d0;
+  --color-brutal-white: #2e3440;
+  --color-brutal-black: #eceff4;
+  --color-brutal-red: #bf616a;
+  --color-brutal-blue: #5e81ac;
+  --color-brutal-yellow: #ebcb8b;
+  --color-brutal-green: #a3be8c;
+  --shadow-brutal: 4px 4px 0px 0px #3b4252;
+  background-color: #2e3440;
+  color: #eceff4;
+}
+
+[data-theme='monokai'] {
+  --bg-main: #272822;
+  --text-main: #f8f8f2;
+  --accent-primary: #f92672;
+  --color-brutal-white: #272822;
+  --color-brutal-black: #f8f8f2;
+  --color-brutal-red: #f92672;
+  --color-brutal-blue: #66d9ef;
+  --color-brutal-yellow: #e6db74;
+  --color-brutal-green: #a6e22e;
+  --shadow-brutal: 4px 4px 0px 0px #49483e;
+  background-color: #272822;
+  color: #f8f8f2;
 }
 
 :root {
