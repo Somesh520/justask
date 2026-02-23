@@ -471,7 +471,7 @@ export const useStore = create((set, get) => ({
     answerQuestion: (skill, selectedOptionIndex) => {
         const state = get();
         const session = state.sessions[state.activeSessionId];
-        if (!session) return;
+        if (!session || session.generatingQuestion) return;
 
         const currentQ = session.questions[session.currentQuestionIndex];
         const isCorrect = currentQ && selectedOptionIndex === currentQ.correctAnswer;
@@ -543,14 +543,20 @@ export const useStore = create((set, get) => ({
         const lastMissedSkill = !isCorrect ? skill : null;
 
         generateNextQuestion(session.role, previousSkills, nextDiff, answers.length + 1, lastMissedSkill).then(nextQ => {
-            if (!nextQ) {
-                console.error("Failed to generate next question");
-                return;
-            }
+            const finalQ = nextQ || {
+                id: `q${answers.length + 1}_error`,
+                skill: "Core Concepts",
+                question: "Wait, the AI is having a moment. Let's check something basic: Why do we test our skills?",
+                options: ["To grow", "To identify gaps", "To learn more", "All of the above"],
+                correctAnswer: 3,
+                context: "Fundamentals are the key!",
+                difficulty: nextDiff
+            };
+
             set(s => {
                 const sess = s.sessions[s.activeSessionId];
                 if (!sess) return {};
-                const updatedQuestions = [...sess.questions, nextQ];
+                const updatedQuestions = [...sess.questions, finalQ];
                 return {
                     sessions: {
                         ...s.sessions,
@@ -564,16 +570,32 @@ export const useStore = create((set, get) => ({
                 };
             });
         }).catch(err => {
-            console.error("Error generating next question:", err);
-            set(s => ({
-                sessions: {
-                    ...s.sessions,
-                    [s.activeSessionId]: {
-                        ...s.sessions[s.activeSessionId],
-                        generatingQuestion: false
+            console.error("Critical Error generating next question:", err);
+            set(s => {
+                const sess = s.sessions[s.activeSessionId];
+                if (!sess) return {};
+                const fallbackQ = {
+                    id: `q${answers.length + 1}_crit_fallback`,
+                    skill: "General Tech",
+                    question: "Quick check: What is the most important part of any tech project?",
+                    options: ["Documentation", "Quality Code", "Logical Structure", "All of the above"],
+                    correctAnswer: 3,
+                    context: "Basics matter!",
+                    difficulty: 'easy'
+                };
+                const updatedQuestions = [...sess.questions, fallbackQ];
+                return {
+                    sessions: {
+                        ...s.sessions,
+                        [s.activeSessionId]: {
+                            ...sess,
+                            questions: updatedQuestions,
+                            currentQuestionIndex: updatedQuestions.length - 1,
+                            generatingQuestion: false
+                        }
                     }
-                }
-            }));
+                };
+            });
         });
     },
 

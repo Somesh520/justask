@@ -22,12 +22,51 @@ const getModel = () => {
     return useStore.getState().apiConfig?.model || DEFAULT_MODEL;
 };
 
-function parseJSON(text) {
+/**
+ * Resilient AI call wrapper that handles 429 Rate Limits by switching to a lighter fallback model.
+ */
+async function safeAICall(messages, options = {}) {
+    const client = getClient();
+    const config = useStore.getState().apiConfig;
+    let model = options.model || config?.model || DEFAULT_MODEL;
+
     try {
-        // 1. Try naive parse
-        return JSON.parse(text);
+        const completion = await client.chat.completions.create({
+            model,
+            messages,
+            temperature: options.temperature || 0.7,
+            top_p: options.top_p || 1,
+        });
+        return completion;
+    } catch (error) {
+        // If 429 Rate Limit hit, try with a lighter model (higher quota)
+        if (error.status === 429 || error.message?.includes('429')) {
+            console.warn(`[AI] 429 Rate Limit hit for ${model}. Switching to fallback...`);
+
+            const fallbackModel = config?.provider === 'groq'
+                ? 'llama-3.1-8b-instant'
+                : 'meta-llama/llama-3.1-8b-instruct:free';
+
+            console.log(`[AI] Retrying with lighter model: ${fallbackModel}`);
+            return await client.chat.completions.create({
+                model: fallbackModel,
+                messages,
+                temperature: options.temperature || 0.7,
+                top_p: options.top_p || 1,
+            });
+        }
+        throw error;
+    }
+}
+
+function parseJSON(text) {
+    if (!text) return null;
+    try {
+        // 1. Remove markdown code blocks if present
+        const cleanText = text.replace(/```json\n?|```/g, '').trim();
+        return JSON.parse(cleanText);
     } catch (e) {
-        // 2. Extract JSON from markdown or text
+        // 2. Extract JSON using regex if naive parse fails
         const match = text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
         if (match) {
             try {
@@ -56,11 +95,7 @@ export async function parseCareerGoal(goal) {
   `;
 
     try {
-        const client = getClient();
-        const completion = await client.chat.completions.create({
-            model: getModel(),
-            messages: [{ role: "user", content: prompt }]
-        });
+        const completion = await safeAICall([{ role: "user", content: prompt }], { temperature: 0.1 });
 
         const text = completion.choices[0].message.content;
         const data = parseJSON(text);
@@ -77,8 +112,59 @@ export async function parseCareerGoal(goal) {
 export async function generateQuestions(role) {
     // Generate just the FIRST question to kick off the adaptive quiz
     const firstQ = await generateNextQuestion(role, [], 'easy', 1);
-    return firstQ ? [firstQ] : [];
+
+    // FALLBACK: If AI fails, provide a basic generic question so the quiz doesn't break
+    if (!firstQ) {
+        return [{
+            id: "q1_fallback",
+            skill: "General Tech",
+            question: `What is the most basic building block of a project in ${role}?`,
+            options: ["Proper Planning", "Writing Code", "Setting Goals", "None of these"],
+            correctAnswer: 0,
+            context: "Starting with a plan is always step one.",
+            difficulty: "easy"
+        }];
+    }
+    return [firstQ];
 }
+
+const FALLBACK_POOL = [
+    {
+        skill: "Problem Solving",
+        question: "In technical situations, what is the best approach to debug a confusing bug?",
+        options: ["Isolate variables", "Check logs", "Reproduce consistently", "All of the above"],
+        correctAnswer: 3,
+        context: "Debugging is a critical and varied skill."
+    },
+    {
+        skill: "Growth Mindset",
+        question: "When you encounter a technology you don't know, what is the first step?",
+        options: ["Give up", "Read official documentation", "Ask someone to do it", "Ignore it"],
+        correctAnswer: 1,
+        context: "Self-learning is the foundation of a tech career."
+    },
+    {
+        skill: "System Design",
+        question: "Why do we break large problems into smaller tasks?",
+        options: ["To make it more complex", "To manage complexity and track progress", "To waste time", "None of these"],
+        correctAnswer: 1,
+        context: "Decomposition is key to building large systems."
+    },
+    {
+        skill: "Collaboration",
+        question: "What is the most effective way to improve code quality in a team?",
+        options: ["Working alone", "Code Reviews", "No testing", "Faster typing"],
+        correctAnswer: 1,
+        context: "Collaboration helps catch errors early."
+    },
+    {
+        skill: "Security",
+        question: "What is the most basic rule for handling user passwords?",
+        options: ["Store in plain text", "Never store in plain text (use hashing)", "Share them", "Save in a Word file"],
+        correctAnswer: 1,
+        context: "Security starts with protecting user data."
+    }
+];
 
 /**
  * Generates a single MCQ question based on context.
@@ -90,60 +176,68 @@ export async function generateQuestions(role) {
  */
 export async function generateNextQuestion(role, previousSkills = [], difficulty = 'easy', questionNumber = 1, lastMissedSkill = null) {
     const { apiConfig } = useStore.getState();
-    const avoidList = previousSkills.length > 0 ? `\nDO NOT ask about these skills (except if doing a fundamental check): ${previousSkills.join(', ')}` : '';
+    const avoidList = previousSkills.length > 0 ? `Avoid these topics: ${previousSkills.join(', ')}` : '';
+
+    const timestamp = Date.now();
+    const entropy = Math.random().toString(36).substring(7);
 
     const drillDownContext = lastMissedSkill
         ? `\nCRITICAL: The user just failed a question about "${lastMissedSkill}". 
-           Instead of move to a new topic, ask a "Ground-level fundamental check" question specifically about "${lastMissedSkill}". 
-           We need to see if they know the very basics of it. Make this an EASY difficulty check.`
-        : `\nDiversity Goal: Ensure this question is different from standard/generic ones. Explore various tech niches.`;
+           Ask an EASY, fundamental check question about "${lastMissedSkill}" basics.`
+        : `\nGoal: Create a technical question about an interesting niche in "${role}".`;
 
     const prompt = `
-    DYNAMISM_SEED: ${Date.now()}
-    RANDOMNESS_FACTOR: HIGH
-    
-    Create a unique and fresh MCQ question for a "${role}".
+    Create a unique MCQ technical question for a "${role}".
     ${drillDownContext}
     
     Difficulty: ${difficulty.toUpperCase()}
-    Question number: ${questionNumber} of 8
+    Question ${questionNumber} of 8
     ${avoidList}
     
-    Difficulty guidelines:
-    - EASY: Basic concepts, definitions, fundamentals that every beginner should know
-    - MEDIUM: Practical application, intermediate concepts, real-world scenarios
-    - HARD: Advanced architecture, optimization, edge cases, expert-level knowledge
-    
-    Output strictly JSON (single object, NOT an array):
+    Output strictly VALID JSON:
     {
-      "id": "q${questionNumber}",
-      "skill": "${lastMissedSkill || 'New Skill Name'}",
-      "question": "A clear, specific technical question?",
-      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "id": "q${questionNumber}_${timestamp}",
+      "skill": "Specific Topic Name",
+      "question": "The question text?",
+      "options": ["Choice A", "Choice B", "Choice C", "Choice D"],
       "correctAnswer": 0,
-      "context": "One sentence explaining why this matters.",
+      "context": "One line explanation.",
       "difficulty": "${difficulty}"
     }
-    
-    "correctAnswer" is the zero-based index (0-3) of the correct option.
-    Make the question practical and test real understanding, not just memorization.
   `;
 
     try {
-        const client = getClient();
-        const completion = await client.chat.completions.create({
-            model: getModel(),
-            messages: [{ role: "user", content: prompt }]
-        });
+        console.log(`[AI Assessment] Generating question ${questionNumber} for ${role}...`);
+        const completion = await safeAICall([{ role: "user", content: prompt }], { temperature: 0.7 });
 
         const text = completion.choices[0].message.content;
+        console.log(`[AI Assessment] Raw Response:`, text);
+
         const parsed = parseJSON(text);
-        // Handle if API returns an array instead of object
-        if (Array.isArray(parsed)) return parsed[0] || null;
-        return parsed || null;
+
+        if (!parsed) {
+            console.warn(`[AI Assessment] JSON Parse failed. Using fallback question.`);
+            throw new Error("Null response or parse failure");
+        }
+
+        const finalParsed = Array.isArray(parsed) ? parsed[0] : parsed;
+        const result = {
+            ...finalParsed,
+            id: finalParsed.id || `q${questionNumber}_${Date.now()}_${entropy}`
+        };
+
+        console.log(`[AI Assessment] Parsed Question:`, result);
+        return result;
     } catch (error) {
-        console.error("AI Question Error:", error?.response?.data || error?.message || error);
-        return null;
+        console.error("AI Question Error:", error);
+        // Better fallback: Pick a random one from the pool
+        const randomIndex = Math.floor(Math.random() * FALLBACK_POOL.length);
+        const fallback = FALLBACK_POOL[randomIndex];
+        return {
+            ...fallback,
+            id: `q${questionNumber}_fallback_${Date.now()}_${entropy}`,
+            difficulty: difficulty
+        };
     }
 }
 
@@ -171,15 +265,9 @@ export async function generateTailoringQuestions(goal, nodes) {
     `;
 
     try {
-        const client = getClient();
-        const response = await client.chat.completions.create({
-            model: getModel(),
-            messages: [{ role: "user", content: prompt }],
-            response_format: { type: "json_object" }
-        });
-
+        const response = await safeAICall([{ role: "user", content: prompt }], { temperature: 0.7 });
         const content = response.choices[0].message.content;
-        return JSON.parse(content).questions;
+        return parseJSON(content)?.questions || [];
     } catch (error) {
         console.error("AI Tailoring Question Error:", error);
         return (nodes || []).slice(0, 5).map((n, i) => ({
@@ -198,33 +286,34 @@ export async function generateRoadmap(role, knownSkills, gapSkills, level = 'Beg
     DYNAMISM_SEED: ${Date.now()}
     VARY_PATH: TRUE
     
-    Create a unique and tailored non-linear learning roadmap for a "${role}".
-    Diversity Goal: Even for the same role, vary the focus areas (e.g., focus more on certain libraries or modern paradigms).
+    PERSONA: You are a friendly, patient, and wise Mentor (like an elder sibling or a favorite teacher).
+    GOAL: Create a unique, genuine, and tailored learning roadmap for a "${role}".
+    STYLE: Use "Explain Like I'm 5" (ELI5) logic. Be extremely supportive and empathetic.
+    LANGUAGE: Use "Hinglish" (a natural mix of Hindi and English) for breakdowns and tasks to make it feel personal and easy to understand.
     
     User Level: ${level}.
     User KNOWS: ${knownSkills.join(', ')}.
     User NEEDS: ${gapSkills.join(', ')}.
 
-    IMPORTANT: The user is a ${level}. Tailor the roadmap depth and resource difficulty accordingly:
-    - Beginner: Focus on fundamentals, step-by-step tutorials, beginner-friendly resources.
-    - Intermediate: Skip basics, focus on practical projects and deeper concepts.
-    - Advanced: Focus on architecture, best practices, advanced patterns, and real-world challenges.
+    TEACHING STRATEGY (Based on Level):
+    - Beginner: Treat them like a child starting from scratch. Use simple analogies (e.g., "Variables are like boxes"). Avoid jargon or explain it immediately in simple words. High encouragement!
+    - Intermediate: Connect dots. Explain "Why" this matters in real work. Challenge them but keep the support high.
+    - Advanced: Talk like a senior dev sharing wisdom. Focus on architecture, trade-offs, and "professional secrets".
 
     Generate a Metro Map style roadmap with exactly 6-8 Main Nodes.
     
     Structure:
-    - Main Nodes: Major milestones (e.g., "Foundations", "Advanced Logic").
+    - Main Nodes: Major milestones (e.g., "Aghaz: Foundations", "Deep Dive: Logic"). Use creative, supportive titles.
     - Sub Nodes: Exactly 2 specific topics per Main Node.
     - Tasks: 1-2 actionable resources per Sub Node. 
     
     CRITICAL RESOURCE RULES:
     1. Each task MUST have a "resources" array with exactly 2 high-quality objects.
-    2. NO HALLUCINATIONS: Do NOT invent direct URLs unless they are 100% verified official sites (e.g. react.dev).
-    3. PREFER SEARCH URLs: To avoid 404/broken links, use functional SEARCH-BASED URLs:
+    2. NO HALLUCINATIONS: Do NOT invent direct URLs.
+    3. SEARCH URLs: Use functional SEARCH-BASED URLs for reliability:
          - YouTube Search: https://www.youtube.com/results?search_query=[TOPIC]+tutorial
-         - MDN Search: https://developer.mozilla.org/en-US/search?q=[TOPIC]
          - Google Search: https://www.google.com/search?q=[TOPIC]+documentation
-    4. TITLES: Use specific titles like "Complete [TOPIC] Guide by [CONTENT_CREATOR]" rather than generic names.
+    4. TITLES: Use specific, mentorship-style titles (e.g., "Recommended: [TOPIC] by [CREATOR]").
 
     Status Rules:
     - Set the FIRST node's status to "active".
@@ -245,16 +334,16 @@ export async function generateRoadmap(role, knownSkills, gapSkills, level = 'Beg
                     "title": "Sub Node 1",
                     "tasks": [
                         {
-                            "title": "Task Title",
-                            "detail": "One sentence description of what to do.",
+                            "title": "Task Title (Actionable)",
+                            "detail": "Friendly instruction on what to do.",
                             "resources": [
-                                { "type": "video", "title": "Search: [TOPIC] Tutorials", "url": "https://www.youtube.com/results?search_query=[TOPIC]+tutorial" },
-                                { "type": "doc", "title": "Search: [TOPIC] Docs", "url": "https://www.google.com/search?q=[TOPIC]+documentation" }
+                                { "type": "video", "title": "...", "url": "..." },
+                                { "type": "doc", "title": "...", "url": "..." }
                             ],
-                            "breakdown": "A concise paragraph explaining the core concept in Hinglish (mix of Hindi and English) if possible, to make it easy to understand.",
+                            "breakdown": "A very simple ELI5 explanation in Hinglish. Use analogies. Make them feel 'I can do this!'",
                             "practice": {
-                                "question": "Practical quiz question about this topic.",
-                                "hint": "A small hint to help them solve it."
+                                "question": "A simple practical challenge.",
+                                "hint": "A supportive hint."
                             }
                         }
                     ]
@@ -268,11 +357,7 @@ export async function generateRoadmap(role, knownSkills, gapSkills, level = 'Beg
   `;
 
     try {
-        const client = getClient();
-        const completion = await client.chat.completions.create({
-            model: getModel(),
-            messages: [{ role: "user", content: prompt }]
-        });
+        const completion = await safeAICall([{ role: "user", content: prompt }], { temperature: 0.8 });
 
         const text = completion.choices[0].message.content;
         return parseJSON(text) || { nodes: [] };
@@ -299,13 +384,8 @@ export async function getCareerInsights(role) {
     `;
 
     try {
-        const client = getClient();
-        const completion = await client.chat.completions.create({
-            model: getModel(),
-            messages: [{ role: "user", content: prompt }],
-            response_format: { type: "json_object" }
-        });
-        return JSON.parse(completion.choices[0].message.content);
+        const completion = await safeAICall([{ role: "user", content: prompt }], { temperature: 0.5 });
+        return parseJSON(completion.choices[0].message.content);
     } catch (error) {
         console.error("Career Insights Error:", error);
         return null;
@@ -398,30 +478,18 @@ export async function generateGauntletChallenge(goal, milestones) {
     `;
 
     try {
-        const client = getClient();
-        const completion = await client.chat.completions.create({
-            model: getModel(),
-            messages: [{ role: "user", content: prompt }],
-            response_format: { type: "json_object" }
-        });
-        return JSON.parse(completion.choices[0].message.content);
+        const completion = await safeAICall([{ role: "user", content: prompt }], { temperature: 0.7 });
+        return parseJSON(completion.choices[0].message.content);
     } catch (error) {
         console.error("Gauntlet Gen Error:", error);
         const isTech = /dev|engineer|code|program|web|react|node|python|stack/i.test(goal);
         return {
-            type: isTech ? "coding_sandbox" : "coding_sandbox", // For now, default to coding as it's the safest 'hard' challenge, OR change to 'physical' if preferred. User said: "legacy -> submit proof is fine".
-            // Actually, let's follow the user's preference:
-            type: isTech ? "coding_sandbox" : "technical", // Wait, 'technical' isn't a valid engine anymore in the new list.
-            // Let's rely on the prompt mainly. But for fallback:
-            type: isTech ? "coding_sandbox" : "coding_sandbox", // Re-reading user: "if ... not falling under any ... the old one where its just submit proof is fine"
-            // But here we are generating a NEW challenge.
-            // If generation fails, we probably want a safe default. 
-            // Let's stick to the previous simple logic but maybe just use 'coding_sandbox' as a safe bet for hackathon demo stability?
-            // Actually, the user's request was about *existing* sessions.
-            // For *new* generations (which fallback covers), let's try to be smart.
+            type: isTech ? "coding_sandbox" : "coding_sandbox",
+            type: isTech ? "coding_sandbox" : "technical",
+            type: isTech ? "coding_sandbox" : "coding_sandbox",
             type: isTech ? "coding_sandbox" : "physical",
             title: "Final Capstone Project",
-            brief: `Build a production-ready application that demonstrates your ${goal} skills.`,
+            brief: `Build a production-ready application that demonstrates your ${role} skills.`,
             requirements: ["Build core features", "Ensure clean code", "Deploy to live URL"],
             timeLimit: "7 Days"
         };
@@ -457,13 +525,8 @@ export async function verifyGauntletSubmission(challenge, submission) {
     `;
 
     try {
-        const client = getClient();
-        const completion = await client.chat.completions.create({
-            model: getModel(),
-            messages: [{ role: "user", content: prompt }],
-            response_format: { type: "json_object" }
-        });
-        return JSON.parse(completion.choices[0].message.content);
+        const completion = await safeAICall([{ role: "user", content: prompt }], { temperature: 0.1 });
+        return parseJSON(completion.choices[0].message.content);
     } catch (error) {
         console.error("Gauntlet Verification Error:", error);
         return { passed: true, score: 80, feedback: "System busy. Manual verification pending, but you're approved based on progress." };
@@ -498,11 +561,7 @@ export async function explainConcept(task, messages, goal, language = 'English')
     `;
 
     try {
-        const client = getClient();
-        const completion = await client.chat.completions.create({
-            model: getModel(),
-            messages: [{ role: "user", content: prompt }]
-        });
+        const completion = await safeAICall([{ role: "user", content: prompt }], { temperature: 0.8 });
         return completion.choices[0].message.content;
     } catch (error) {
         console.error("AI Explain Error:", error);

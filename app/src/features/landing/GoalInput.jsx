@@ -59,20 +59,29 @@ export function GoalInput({ onSubmit, disabled }) {
                             <span className="text-2xl font-black px-6 select-none shrink-0 border-r-3 border-black mr-4 py-2 bg-brutal-yellow">
                                 GOAL
                             </span>
-                            <input
-                                type="text"
-                                value={goal}
-                                onChange={(e) => setGoal(e.target.value)}
-                                onKeyDown={handleGoalKeyDown}
-                                placeholder="FULL STACK DEVELOPER..."
-                                className="w-full text-3xl font-black outline-none font-mono bg-transparent placeholder:text-gray-300 uppercase"
-                                autoFocus
-                            />
+                            <div className="flex-1 flex flex-col">
+                                <input
+                                    type="text"
+                                    value={goal}
+                                    onChange={(e) => setGoal(e.target.value)}
+                                    onKeyDown={handleGoalKeyDown}
+                                    placeholder="e.g. FULL STACK DEVELOPER..."
+                                    className="w-full text-3xl font-black outline-none font-mono bg-transparent placeholder:text-gray-200 uppercase"
+                                    autoFocus
+                                />
+                                {goal.length > 0 && goal.length <= 3 && (
+                                    <span className="text-[10px] font-black text-red-500 font-mono">TYPE AT LEAST 4 CHARACTERS...</span>
+                                )}
+                                {goal.length > 3 && (
+                                    <span className="text-[10px] font-black text-brutal-blue font-mono animate-pulse">PRESS ENTER ↵</span>
+                                )}
+                            </div>
                             <button
                                 onClick={() => goal.length > 3 && setStep(2)}
-                                className={`ml-2 p-2 bg-brutal-black text-white hover:bg-brutal-blue transition-opacity ${goal.length > 3 ? 'opacity-100' : 'opacity-0'}`}
+                                disabled={goal.length <= 3}
+                                className={`ml-2 px-6 py-2 bg-black text-white font-black text-lg flex items-center gap-2 hover:bg-brutal-blue transition-all ${goal.length > 3 ? 'opacity-100' : 'opacity-40 cursor-not-allowed'}`}
                             >
-                                <ArrowRight size={24} strokeWidth={3} />
+                                NEXT <ArrowRight size={20} strokeWidth={3} />
                             </button>
                         </div>
                     </motion.div>
@@ -88,28 +97,34 @@ export function GoalInput({ onSubmit, disabled }) {
                             <span className="text-2xl font-black px-6 select-none shrink-0 border-r-3 border-black mr-4 py-2 bg-brutal-red text-white">
                                 DEADLINE
                             </span>
-                            <input
-                                type="text"
-                                value={deadline}
-                                onChange={(e) => setDeadline(e.target.value)}
-                                onKeyDown={handleDeadlineKeyDown}
-                                placeholder="e.g. 3 MONTHS..."
-                                className="w-full text-3xl font-black outline-none font-mono bg-transparent placeholder:text-gray-300 uppercase"
-                                autoFocus
-                            />
+                            <div className="flex-1 flex flex-col">
+                                <input
+                                    type="text"
+                                    value={deadline}
+                                    onChange={(e) => setDeadline(e.target.value)}
+                                    onKeyDown={handleDeadlineKeyDown}
+                                    placeholder="e.g. 3 MONTHS..."
+                                    className="w-full text-3xl font-black outline-none font-mono bg-transparent placeholder:text-gray-200 uppercase"
+                                    autoFocus
+                                />
+                                {deadline.length > 0 && (
+                                    <span className="text-[10px] font-black text-brutal-red font-mono animate-pulse uppercase">READY? PRESS ENTER ↵</span>
+                                )}
+                            </div>
                             <button
                                 onClick={handleSubmit}
                                 disabled={isLoading || deadline.length === 0}
-                                className={`ml-2 p-2 bg-brutal-black text-white hover:bg-brutal-yellow hover:text-black transition-all ${deadline.length > 0 ? 'opacity-100' : 'opacity-0'} ${isLoading ? 'animate-pulse cursor-not-allowed' : ''}`}
+                                className={`ml-2 px-6 py-2 bg-black text-white font-black text-lg flex items-center gap-2 hover:bg-brutal-yellow hover:text-black transition-all ${deadline.length > 0 ? 'opacity-100' : 'opacity-40 cursor-not-allowed'} ${isLoading ? 'animate-pulse' : ''}`}
                             >
-                                {isLoading ? <Clock size={24} className="animate-spin" /> : <ArrowRight size={24} strokeWidth={3} />}
+                                {isLoading ? 'STARTING...' : 'START'}
+                                {isLoading ? <Clock size={20} className="animate-spin" /> : <ArrowRight size={20} strokeWidth={3} />}
                             </button>
                         </div>
                         <button
                             onClick={() => setStep(1)}
-                            className="mt-4 text-sm font-bold opacity-50 hover:opacity-100 bg-white border-2 border-black px-2 py-1"
+                            className="mt-4 text-xs font-black opacity-50 hover:opacity-100 bg-white border-2 border-black px-3 py-1 flex items-center gap-1 transition-all"
                         >
-                            ← BACK
+                            ← BACK TO GOAL
                         </button>
                     </motion.div>
                 )}
