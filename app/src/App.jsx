@@ -192,7 +192,7 @@ function App() {
     if (!activeSession || activeSession.phase !== 'roadmap') return;
 
     const roadmap = activeSession.roadmap;
-    if (!roadmap?.nodes) return;
+    if (!roadmap?.nodes || roadmap.nodes.length === 0) return;
 
     const allNodesDone = roadmap.nodes.every(n => n.status === 'completed');
     if (allNodesDone && !activeSession.gauntletDismissed) {
