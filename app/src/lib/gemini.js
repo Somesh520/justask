@@ -92,7 +92,12 @@ export async function generateNextQuestion(role, previousSkills = [], difficulty
     const avoidList = previousSkills.length > 0 ? `\nDO NOT ask about these skills (already tested): ${previousSkills.join(', ')}` : '';
 
     const prompt = `
-    Generate exactly 1 multiple-choice question for a "${role}" skill assessment.
+    DYNAMISM_SEED: ${Date.now()}
+    RANDOMNESS_FACTOR: HIGH
+    
+    Create a unique and fresh MCQ question for a "${role}".
+    Diversity Goal: Ensure this question is different from standard/generic ones. Explore various niches like ${role} security, testing, performance, or specific popular libraries.
+    
     Difficulty: ${difficulty.toUpperCase()}
     Question number: ${questionNumber} of 8
     ${avoidList}
@@ -183,7 +188,12 @@ export async function generateRoadmap(role, knownSkills, gapSkills, level = 'Beg
     const { apiConfig } = useStore.getState();
 
     const prompt = `
-    Create a non-linear learning roadmap for a "${role}".
+    DYNAMISM_SEED: ${Date.now()}
+    VARY_PATH: TRUE
+    
+    Create a unique and tailored non-linear learning roadmap for a "${role}".
+    Diversity Goal: Even for the same role, vary the focus areas (e.g., focus more on certain libraries or modern paradigms).
+    
     User Level: ${level}.
     User KNOWS: ${knownSkills.join(', ')}.
     User NEEDS: ${gapSkills.join(', ')}.
@@ -200,9 +210,14 @@ export async function generateRoadmap(role, knownSkills, gapSkills, level = 'Beg
     - Sub Nodes: Exactly 2 specific topics per Main Node.
     - Tasks: 1-2 actionable resources per Sub Node. 
     
-    CRITICAL: Each task MUST have a "resources" array containing at least 2 objects:
-    - { "type": "video", "title": "Specific YouTube Tutorial Title", "url": "https://youtube.com/..." }
-    - { "type": "doc", "title": "Official Documentation or Guide", "url": "..." }
+    CRITICAL RESOURCE RULES:
+    1. Each task MUST have a "resources" array with exactly 2 high-quality objects.
+    2. NO HALLUCINATIONS: Do NOT invent direct URLs unless they are 100% verified official sites (e.g. react.dev).
+    3. PREFER SEARCH URLs: To avoid 404/broken links, use functional SEARCH-BASED URLs:
+         - YouTube Search: https://www.youtube.com/results?search_query=[TOPIC]+tutorial
+         - MDN Search: https://developer.mozilla.org/en-US/search?q=[TOPIC]
+         - Google Search: https://www.google.com/search?q=[TOPIC]+documentation
+    4. TITLES: Use specific titles like "Complete [TOPIC] Guide by [CONTENT_CREATOR]" rather than generic names.
 
     Status Rules:
     - Set the FIRST node's status to "active".
@@ -226,13 +241,13 @@ export async function generateRoadmap(role, knownSkills, gapSkills, level = 'Beg
                             "title": "Task Title",
                             "detail": "One sentence description of what to do.",
                             "resources": [
-                                { "type": "video", "title": "...", "url": "..." },
-                                { "type": "doc", "title": "...", "url": "..." }
+                                { "type": "video", "title": "Search: [TOPIC] Tutorials", "url": "https://www.youtube.com/results?search_query=[TOPIC]+tutorial" },
+                                { "type": "doc", "title": "Search: [TOPIC] Docs", "url": "https://www.google.com/search?q=[TOPIC]+documentation" }
                             ],
-                            "breakdown": "A concise paragraph explaining the core concept.",
+                            "breakdown": "A concise paragraph explaining the core concept in Hinglish (mix of Hindi and English) if possible, to make it easy to understand.",
                             "practice": {
-                                "question": "...",
-                                "hint": "..."
+                                "question": "Practical quiz question about this topic.",
+                                "hint": "A small hint to help them solve it."
                             }
                         }
                     ]
