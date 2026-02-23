@@ -1,0 +1,16 @@
+{
+    "rewrites": [
+        {
+            "source": "/roadmap-api/:path*",
+            "destination": "https://roadmap.sh/api/:path*"
+        },
+        {
+            "source": "/roadmap-content/:path*",
+            "destination": "https://roadmap.sh/:path*"
+        },
+        {
+            "source": "/(.*)",
+            "destination": "/index.html"
+        }
+    ]
+}

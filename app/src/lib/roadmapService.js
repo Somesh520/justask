@@ -1,9 +1,6 @@
-// src/lib/roadmapService.js
-// Fetches official roadmap data and enriches it with real resources.
-
-const isDev = typeof import.meta !== 'undefined' && import.meta.env?.DEV;
-const API_BASE = isDev ? '/roadmap-api/v1-official-roadmap' : 'https://roadmap.sh/api/v1-official-roadmap';
-const CONTENT_BASE = isDev ? '/roadmap-content' : 'https://roadmap.sh';
+// Use relative paths; these are handled by Vite proxy in dev and Vercel rewrites in prod
+const API_BASE = '/roadmap-api/v1-official-roadmap';
+const CONTENT_BASE = '/roadmap-content';
 
 /**
  * Available official roadmaps.
