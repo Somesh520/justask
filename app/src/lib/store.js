@@ -490,11 +490,12 @@ export const useStore = create((set, get) => ({
         // Stop after 8 questions
         if (answers.length >= 8) {
             const correctCount = answers.filter(a => a.isCorrect).length;
-            const ratio = correctCount / answers.length;
+            const hasPassedHard = answers.some(a => a.difficulty === 'hard' && a.isCorrect);
+            const hasPassedMedium = answers.some(a => a.difficulty === 'medium' && a.isCorrect);
 
             let level = 'Beginner';
-            if (ratio >= 0.7) level = 'Advanced';
-            else if (ratio >= 0.4) level = 'Intermediate';
+            if (hasPassedHard && correctCount >= 5) level = 'Advanced';
+            else if (hasPassedMedium && correctCount >= 4) level = 'Intermediate';
 
             set(s => ({
                 sessions: {
@@ -537,9 +538,11 @@ export const useStore = create((set, get) => ({
             }
         }));
 
-        // Generate next question from AI
+        // Generate next question from AI with context
         const previousSkills = answers.map(a => a.skill);
-        generateNextQuestion(session.role, previousSkills, nextDiff, answers.length + 1).then(nextQ => {
+        const lastMissedSkill = !isCorrect ? skill : null;
+
+        generateNextQuestion(session.role, previousSkills, nextDiff, answers.length + 1, lastMissedSkill).then(nextQ => {
             if (!nextQ) {
                 console.error("Failed to generate next question");
                 return;

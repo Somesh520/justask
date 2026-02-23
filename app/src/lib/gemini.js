@@ -86,17 +86,24 @@ export async function generateQuestions(role) {
  * @param {Array} previousSkills - Skills already tested (to avoid duplicates)
  * @param {string} difficulty - Target difficulty: "easy", "medium", "hard"
  * @param {number} questionNumber - Current question number (1-8)
+ * @param {string} lastMissedSkill - (Optional) The skill user just got wrong
  */
-export async function generateNextQuestion(role, previousSkills = [], difficulty = 'easy', questionNumber = 1) {
+export async function generateNextQuestion(role, previousSkills = [], difficulty = 'easy', questionNumber = 1, lastMissedSkill = null) {
     const { apiConfig } = useStore.getState();
-    const avoidList = previousSkills.length > 0 ? `\nDO NOT ask about these skills (already tested): ${previousSkills.join(', ')}` : '';
+    const avoidList = previousSkills.length > 0 ? `\nDO NOT ask about these skills (except if doing a fundamental check): ${previousSkills.join(', ')}` : '';
+
+    const drillDownContext = lastMissedSkill
+        ? `\nCRITICAL: The user just failed a question about "${lastMissedSkill}". 
+           Instead of move to a new topic, ask a "Ground-level fundamental check" question specifically about "${lastMissedSkill}". 
+           We need to see if they know the very basics of it. Make this an EASY difficulty check.`
+        : `\nDiversity Goal: Ensure this question is different from standard/generic ones. Explore various tech niches.`;
 
     const prompt = `
     DYNAMISM_SEED: ${Date.now()}
     RANDOMNESS_FACTOR: HIGH
     
     Create a unique and fresh MCQ question for a "${role}".
-    Diversity Goal: Ensure this question is different from standard/generic ones. Explore various niches like ${role} security, testing, performance, or specific popular libraries.
+    ${drillDownContext}
     
     Difficulty: ${difficulty.toUpperCase()}
     Question number: ${questionNumber} of 8
@@ -110,7 +117,7 @@ export async function generateNextQuestion(role, previousSkills = [], difficulty
     Output strictly JSON (single object, NOT an array):
     {
       "id": "q${questionNumber}",
-      "skill": "Specific Skill Name",
+      "skill": "${lastMissedSkill || 'New Skill Name'}",
       "question": "A clear, specific technical question?",
       "options": ["Option A", "Option B", "Option C", "Option D"],
       "correctAnswer": 0,
