@@ -6,12 +6,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 const PROVIDERS = [
     { id: 'openrouter', name: 'OpenRouter', icon: Globe, defaultBase: 'https://openrouter.ai/api/v1' },
     { id: 'openai', name: 'OpenAI', icon: Box, defaultBase: 'https://api.openai.com/v1' },
+    { id: 'groq', name: 'Groq', icon: Box, defaultBase: 'https://api.groq.com/openai/v1' },
     { id: 'gemini', name: 'Google Gemini', icon: Box, defaultBase: 'https://generativelanguage.googleapis.com/v1beta/openai/' },
     { id: 'custom', name: 'Custom (Local/Other)', icon: Server, defaultBase: 'http://localhost:11434/v1' }
 ];
 
 export const ApiKeyModal = () => {
-    const { apiConfig, setApiConfig, demoMode, setDemoMode, isApiKeyModalOpen, setApiKeyModalOpen } = useStore();
+    const { apiConfig, setApiConfig, isApiKeyModalOpen, setApiKeyModalOpen } = useStore();
     const [selectedProvider, setSelectedProvider] = useState(apiConfig?.provider || 'openrouter');
     const [apiKey, setApiKey] = useState(apiConfig?.apiKey || '');
     const [baseUrl, setBaseUrl] = useState(apiConfig?.baseUrl || 'https://openrouter.ai/api/v1');
@@ -35,6 +36,7 @@ export const ApiKeyModal = () => {
             // Reset model default based on provider?
             if (providerId === 'openai') setModel('gpt-4o-mini');
             if (providerId === 'openrouter') setModel('arcee-ai/trinity-large-preview:free');
+            if (providerId === 'groq') setModel('llama-3.3-70b-versatile');
             if (providerId === 'gemini') setModel('gemini-1.5-flash');
             if (providerId === 'custom') setModel('llama3');
         }
@@ -54,6 +56,11 @@ export const ApiKeyModal = () => {
             return;
         }
 
+        if (selectedProvider === 'groq' && !apiKey.startsWith('gsk_')) {
+            setError('Groq keys usually start with "gsk_"');
+            return;
+        }
+
         setApiConfig({
             provider: selectedProvider,
             apiKey: apiKey.trim(),
@@ -63,10 +70,6 @@ export const ApiKeyModal = () => {
         setApiKeyModalOpen(false);
     };
 
-    const handleDemoMode = () => {
-        setDemoMode(true);
-        setApiKeyModalOpen(false);
-    };
 
     const activeProvider = PROVIDERS.find(p => p.id === selectedProvider);
 
@@ -97,19 +100,6 @@ export const ApiKeyModal = () => {
                                 {p.name}
                             </button>
                         ))}
-
-                        <div className="mt-auto pt-4 border-t-2 border-dashed border-gray-300">
-                            <button
-                                onClick={handleDemoMode}
-                                className="w-full flex items-center gap-3 p-3 text-left border-2 border-black bg-brutal-yellow text-black font-bold uppercase text-xs hover:translate-x-1 hover:shadow-brutal transition-all"
-                            >
-                                <PlayCircle size={16} />
-                                Demo / Guest Mode
-                            </button>
-                            <p className="text-[10px] text-gray-500 mt-2 leading-tight">
-                                Use mock data to explore features without an API key.
-                            </p>
-                        </div>
                     </div>
 
                     {/* Main Form Area */}
@@ -149,7 +139,11 @@ export const ApiKeyModal = () => {
                                     value={apiKey}
                                     onChange={e => { setApiKey(e.target.value); setError(''); }}
                                     className="w-full bg-gray-100 border-2 border-black p-3 font-mono text-sm focus:outline-none focus:bg-white focus:shadow-[4px_4px_0px_0px_#000] transition-all"
-                                    placeholder={selectedProvider === 'openrouter' ? 'sk-or-...' : 'sk-...'}
+                                    placeholder={
+                                        selectedProvider === 'openrouter' ? 'sk-or-...' :
+                                            selectedProvider === 'groq' ? 'gsk_...' :
+                                                'sk-...'
+                                    }
                                 />
                             </div>
 

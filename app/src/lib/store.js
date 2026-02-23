@@ -26,13 +26,44 @@ export const useStore = create((set, get) => ({
     user: null,         // { uid, email, displayName, photoURL } - Firebase Auth User data
     isLoggedIn: false,  // Replaces previous 'isAuthenticated'
     // API Configuration
-    apiConfig: JSON.parse(localStorage.getItem('api_config')) || {
-        provider: 'openrouter',
-        apiKey: localStorage.getItem('openrouter_api_key') || '',
-        baseUrl: 'https://openrouter.ai/api/v1',
-        model: 'arcee-ai/trinity-large-preview:free'
-    },
-    demoMode: false,
+    apiConfig: (() => {
+        const localConfig = JSON.parse(localStorage.getItem('api_config'));
+        const envGroqKey = import.meta.env.VITE_GROQ_API_KEY;
+        const envOpenRouterKey = import.meta.env.VITE_OPENROUTER_API_KEY;
+
+        // Priority 1: Valid local config (that isn't a dummy)
+        if (localConfig && localConfig.apiKey && !localConfig.apiKey.includes('dummy')) {
+            return localConfig;
+        }
+
+        // Priority 2: Environmental Groq Key
+        if (envGroqKey && !envGroqKey.includes('dummy')) {
+            return {
+                provider: 'groq',
+                apiKey: envGroqKey,
+                baseUrl: 'https://api.groq.com/openai/v1',
+                model: 'llama-3.3-70b-versatile'
+            };
+        }
+
+        // Priority 3: Environmental OpenRouter Key
+        if (envOpenRouterKey && !envOpenRouterKey.includes('dummy')) {
+            return {
+                provider: 'openrouter',
+                apiKey: envOpenRouterKey,
+                baseUrl: 'https://openrouter.ai/api/v1',
+                model: 'arcee-ai/trinity-large-preview:free'
+            };
+        }
+
+        // Fallback to whatever we have
+        return localConfig || {
+            provider: 'openrouter',
+            apiKey: '',
+            baseUrl: 'https://openrouter.ai/api/v1',
+            model: 'arcee-ai/trinity-large-preview:free'
+        };
+    })(),
     isApiKeyModalOpen: false,
 
 
@@ -77,7 +108,6 @@ export const useStore = create((set, get) => ({
         set({ apiConfig: config });
     },
 
-    setDemoMode: (isDemo) => set({ demoMode: isDemo }),
     setApiKeyModalOpen: (isOpen) => set({ isApiKeyModalOpen: isOpen }),
 
     // Action to clear user data on logout (called by App.jsx's onAuthStateChanged)
@@ -198,8 +228,8 @@ export const useStore = create((set, get) => ({
     // = ===========================================
     syncToFirestore: async () => {
         const state = get(); // Get the current state
-        if (!state.user || !state.user.uid) {
-            // Silently return if not logged in (expected behavior)
+        if (!state.user || !state.user.uid || !db) {
+            // Silently return if not logged in or db not initialized
             return;
         }
 
@@ -689,7 +719,7 @@ export const useStore = create((set, get) => ({
 
     deleteSession: async (id) => {
         const state = get();
-        if (state.user?.uid) {
+        if (state.user?.uid && db) {
             try {
                 const roadmapRef = doc(db, "users", state.user.uid, "goals", id);
                 await deleteDoc(roadmapRef);
@@ -729,7 +759,7 @@ export const useStore = create((set, get) => ({
     publishBlueprint: async (sessionId, force = false) => {
         const state = get();
         const session = state.sessions[sessionId];
-        if (!session || !state.user) return;
+        if (!session || !state.user || !db) return;
 
         const blueprintRef = doc(db, "public_blueprints", sessionId);
 
@@ -772,7 +802,7 @@ export const useStore = create((set, get) => ({
 
     unpublishBlueprint: async (sessionId) => {
         const state = get();
-        if (!state.user) return;
+        if (!state.user || !db) return;
 
         const blueprintRef = doc(db, "public_blueprints", sessionId);
 

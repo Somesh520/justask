@@ -17,9 +17,14 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
+let app;
+try {
+  app = initializeApp(firebaseConfig);
+} catch (error) {
+  console.error("Firebase initialization failed:", error);
+}
 
 // Initialize Firebase services and export them for use throughout your app
-export const auth = getAuth(app);             // Authentications service instance
-export const db = getFirestore(app);         // Firestore database service instance
+export const auth = app ? getAuth(app) : null;             // Authentications service instance
+export const db = app ? getFirestore(app) : null;         // Firestore database service instance
 export const googleProvider = new GoogleAuthProvider(); // Google Auth Provider instance

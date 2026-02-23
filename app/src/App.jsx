@@ -70,6 +70,11 @@ function App() {
   // (The "Read (On Load/Login)" part of Phase 4)
   // ===============================================
   useEffect(() => {
+    if (!auth) {
+      console.warn("Firebase Auth is not initialized. Skipping auth listener.");
+      setInitialLoadComplete(true);
+      return;
+    }
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => { // Made callback async
       if (firebaseUser) {
         console.log("Firebase user detected:", firebaseUser.uid);
@@ -84,67 +89,71 @@ function App() {
         });
 
         // 2. Fetch User Document (for engagementMetrics and more) from Firestore
-        const userDocRef = doc(db, "users", firebaseUser.uid);
-        const userDocSnap = await getDoc(userDocRef);
+        if (db) {
+          const userDocRef = doc(db, "users", firebaseUser.uid);
+          const userDocSnap = await getDoc(userDocRef);
 
-        if (userDocSnap.exists()) {
-          const userDataFromFirestore = userDocSnap.data();
-          console.log("User data from Firestore:", userDataFromFirestore);
+          if (userDocSnap.exists()) {
+            const userDataFromFirestore = userDocSnap.data();
+            console.log("User data from Firestore:", userDataFromFirestore);
 
-          // --- Streak Decay Logic ---
-          const today = new Date().toISOString().split('T')[0];
-          const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-          let currentStreak = userDataFromFirestore.currentStreak || 0;
-          const lastActive = userDataFromFirestore.lastActiveDate;
+            // --- Streak Decay Logic ---
+            const today = new Date().toISOString().split('T')[0];
+            const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+            let currentStreak = userDataFromFirestore.currentStreak || 0;
+            const lastActive = userDataFromFirestore.lastActiveDate;
 
-          if (currentStreak > 0 && lastActive && lastActive !== today && lastActive !== yesterday) {
-            console.log("Streak decayed - resetting to 0");
-            currentStreak = 0;
-            // The next syncToFirestore will persist this 0 to the DB
+            if (currentStreak > 0 && lastActive && lastActive !== today && lastActive !== yesterday) {
+              console.log("Streak decayed - resetting to 0");
+              currentStreak = 0;
+              // The next syncToFirestore will persist this 0 to the DB
+            }
+
+            // Update user in Zustand with Firestore-specific fields
+            setUser({
+              uid: firebaseUser.uid,
+              email: firebaseUser.email,
+              displayName: firebaseUser.displayName,
+              photoURL: firebaseUser.photoURL,
+              lastActiveDate: userDataFromFirestore.lastActiveDate,
+            });
+
+            // Set engagementMetrics in Zustand (using decayed streak if applicable)
+            setEngagementMetrics({
+              currentStreak: currentStreak,
+              totalProjects: userDataFromFirestore.totalProjects || 0,
+              heatmapData: userDataFromFirestore.heatmapData || {},
+              showTrap: userDataFromFirestore.showTrap ?? false,
+            });
+
+          } else {
+            console.warn("Firestore user document not found for:", firebaseUser.uid);
+            // This case should ideally not happen if AuthModal correctly creates it on first sign-in.
+            // If it does, you might want to consider creating a default Firestore user document here
+            // or guiding the user through a setup process.
           }
 
-          // Update user in Zustand with Firestore-specific fields
-          setUser({
-            uid: firebaseUser.uid,
-            email: firebaseUser.email,
-            displayName: firebaseUser.displayName,
-            photoURL: firebaseUser.photoURL,
-            lastActiveDate: userDataFromFirestore.lastActiveDate,
-          });
+          // 3. Fetch Goals (sessions) from the sub-collection in Firestore
+          const roadmapsCollectionRef = collection(db, "users", firebaseUser.uid, "goals");
+          const roadmapsSnapshot = await getDocs(roadmapsCollectionRef);
+          const loadedSessions = {};
+          let firstSessionId = null; // To set the activeSessionId if any roadmaps exist
 
-          // Set engagementMetrics in Zustand (using decayed streak if applicable)
-          setEngagementMetrics({
-            currentStreak: currentStreak,
-            totalProjects: userDataFromFirestore.totalProjects || 0,
-            heatmapData: userDataFromFirestore.heatmapData || {},
-            showTrap: userDataFromFirestore.showTrap ?? false,
+          roadmapsSnapshot.forEach(doc => {
+            const sessionData = doc.data();
+            loadedSessions[doc.id] = { id: doc.id, ...sessionData }; // Store with ID
+            // Try to set an active roadmap: prefer 'active' status, otherwise just take the first one
+            if (!firstSessionId && sessionData.status === "active") {
+              firstSessionId = doc.id;
+            } else if (!firstSessionId) {
+              firstSessionId = doc.id;
+            }
           });
-
+          console.log("Loaded sessions from Firestore:", loadedSessions);
+          setSessions(loadedSessions); // Update Zustand store with loaded roadmaps (merges with local if any)
         } else {
-          console.warn("Firestore user document not found for:", firebaseUser.uid);
-          // This case should ideally not happen if AuthModal correctly creates it on first sign-in.
-          // If it does, you might want to consider creating a default Firestore user document here
-          // or guiding the user through a setup process.
+          console.warn("Firestore service is not initialized.");
         }
-
-        // 3. Fetch Goals (sessions) from the sub-collection in Firestore
-        const roadmapsCollectionRef = collection(db, "users", firebaseUser.uid, "goals");
-        const roadmapsSnapshot = await getDocs(roadmapsCollectionRef);
-        const loadedSessions = {};
-        let firstSessionId = null; // To set the activeSessionId if any roadmaps exist
-
-        roadmapsSnapshot.forEach(doc => {
-          const sessionData = doc.data();
-          loadedSessions[doc.id] = { id: doc.id, ...sessionData }; // Store with ID
-          // Try to set an active roadmap: prefer 'active' status, otherwise just take the first one
-          if (!firstSessionId && sessionData.status === "active") {
-            firstSessionId = doc.id;
-          } else if (!firstSessionId) {
-            firstSessionId = doc.id;
-          }
-        });
-        console.log("Loaded sessions from Firestore:", loadedSessions);
-        setSessions(loadedSessions); // Update Zustand store with loaded roadmaps (merges with local if any)
         setInitialLoadComplete(true); // Hydration done
 
 
