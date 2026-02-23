@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch'
-import { Check, Lock, Play, Plus, Minus, Info, ClipboardList, MessageCircleQuestion, BookMarked, CalendarCheck, Share2, Trophy } from 'lucide-react'
+import { Download, Check, Lock, Play, Plus, Minus, Info, ClipboardList, MessageCircleQuestion, BookMarked, CalendarCheck, Share2, Trophy } from 'lucide-react'
 import { useStore } from '../../lib/store'
+import html2canvas from 'html2canvas'
 import { TaskThreadView } from './TaskThreadView'
 import { NextUpPanel } from './NextUpPanel'
 import AIExplainPanel from './AIExplainPanel'
@@ -16,6 +17,8 @@ export function MetroMap() {
     const [aiTask, setAiTask] = useState(null)
 
     const [isPublishing, setIsPublishing] = useState(false)
+    const [isExporting, setIsExporting] = useState(false)
+    const exportRef = useRef(null)
 
     const handlePublish = async () => {
         setIsPublishing(true)
@@ -26,6 +29,198 @@ export function MetroMap() {
             setIsPublishing(false)
         }
     }
+
+    const handleExport = async () => {
+        if (!localNodes || localNodes.length === 0) {
+            alert("No roadmap to export!");
+            return;
+        }
+        setIsExporting(true);
+        try {
+            const PADDING = 100;
+            const NODE_R = 60;
+            const LABEL_W = 200;
+            const LABEL_H = 50;
+
+            // Calculate bounding box of all nodes
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            localNodes.forEach(n => {
+                minX = Math.min(minX, n.x - NODE_R);
+                minY = Math.min(minY, n.y - NODE_R);
+                maxX = Math.max(maxX, n.x + NODE_R + LABEL_W);
+                maxY = Math.max(maxY, n.y + NODE_R + 60 + LABEL_H);
+            });
+
+            const mapW = maxX - minX + PADDING * 2;
+            const mapH = maxY - minY + PADDING * 2;
+            const SCALE = 2; // Retina-quality
+
+            const canvas = document.createElement('canvas');
+            canvas.width = mapW * SCALE;
+            canvas.height = (mapH + 120) * SCALE; // +120 for header
+            const ctx = canvas.getContext('2d');
+            ctx.scale(SCALE, SCALE);
+
+            const offsetX = -minX + PADDING;
+            const offsetY = -minY + PADDING + 120; // push content down for header
+
+            // --- Background ---
+            const bgGrad = ctx.createLinearGradient(0, 0, mapW, mapH + 120);
+            bgGrad.addColorStop(0, '#0f0f0f');
+            bgGrad.addColorStop(1, '#1a1a2e');
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, mapW, mapH + 120);
+
+            // --- Dot grid ---
+            ctx.fillStyle = 'rgba(255,255,255,0.04)';
+            for (let x = 0; x < mapW; x += 24) {
+                for (let y = 0; y < mapH + 120; y += 24) {
+                    ctx.beginPath();
+                    ctx.arc(x, y, 1.5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            // --- Header ---
+            ctx.fillStyle = '#FFDE00';
+            ctx.fillRect(0, 0, mapW, 100);
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(0, 0, mapW, 100);
+
+            ctx.fillStyle = '#000';
+            ctx.font = 'bold 48px monospace';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('JUSTASK.', 30, 38);
+
+            ctx.font = 'bold 20px monospace';
+            ctx.fillStyle = '#333';
+            ctx.fillText(`CAREER: ${(activeSession?.role || activeSession?.goal || 'ROADMAP').toUpperCase()}`, 30, 76);
+
+            // date top right
+            ctx.font = '14px monospace';
+            ctx.fillStyle = '#555';
+            ctx.textAlign = 'right';
+            ctx.fillText(new Date().toLocaleDateString(), mapW - 20, 76);
+            ctx.textAlign = 'left';
+
+            // --- Connection Lines ---
+            for (let i = 0; i < localNodes.length - 1; i++) {
+                const a = localNodes[i];
+                const b = localNodes[i + 1];
+                ctx.beginPath();
+                ctx.setLineDash([10, 8]);
+                ctx.lineWidth = 3;
+                ctx.strokeStyle = 'rgba(255,222,0,0.4)';
+                ctx.moveTo(a.x + offsetX, a.y + offsetY);
+                ctx.lineTo(b.x + offsetX, b.y + offsetY);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+
+            // --- Nodes ---
+            const statusColors = {
+                completed: { fill: '#3B82F6', stroke: '#fff', text: '#fff' },
+                active: { fill: '#FFDE00', stroke: '#000', text: '#000' },
+                locked: { fill: '#FF4D4D', stroke: '#fff', text: '#fff' },
+            };
+
+            localNodes.forEach((node) => {
+                const cx = node.x + offsetX;
+                const cy = node.y + offsetY;
+                const colors = statusColors[node.status] || statusColors.locked;
+
+                // Shadow
+                ctx.shadowColor = colors.fill;
+                ctx.shadowBlur = 24;
+
+                // Circle
+                ctx.beginPath();
+                ctx.arc(cx, cy, NODE_R, 0, Math.PI * 2);
+                ctx.fillStyle = colors.fill;
+                ctx.fill();
+                ctx.strokeStyle = colors.stroke;
+                ctx.lineWidth = 4;
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+
+                // Status icon text
+                ctx.font = 'bold 22px monospace';
+                ctx.fillStyle = colors.text;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                const icon = node.status === 'completed' ? '✓' : node.status === 'active' ? '▶' : '🔒';
+                ctx.fillText(icon, cx, cy - 10);
+
+                // Task count
+                const taskCount = node.subNodes?.reduce((s, sub) => s + (sub.tasks?.length || 0), 0) || 0;
+                ctx.font = 'bold 13px monospace';
+                ctx.fillText(`${taskCount} TASKS`, cx, cy + 14);
+
+                // Label box (below the node)
+                const lx = cx - LABEL_W / 2;
+                const ly = cy + NODE_R + 16;
+
+                ctx.fillStyle = '#fff';
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.rect(lx, ly, LABEL_W, LABEL_H);
+                ctx.fill();
+                ctx.stroke();
+
+                // Shadow offset
+                ctx.fillStyle = '#000';
+                ctx.fillRect(lx + 4, ly + 4, LABEL_W, LABEL_H);
+                ctx.fillStyle = '#fff';
+                ctx.strokeStyle = '#000';
+                ctx.beginPath();
+                ctx.rect(lx, ly, LABEL_W, LABEL_H);
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.fillStyle = '#000';
+                ctx.font = 'bold 13px monospace';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                // Word-wrap label
+                const words = (node.title || 'Node').split(' ');
+                let line = '';
+                let lineY = ly + 14;
+                words.forEach((word, i) => {
+                    const testLine = line + word + ' ';
+                    if (ctx.measureText(testLine).width > LABEL_W - 10 && i > 0) {
+                        ctx.fillText(line.trim(), cx, lineY);
+                        line = word + ' ';
+                        lineY += 16;
+                    } else {
+                        line = testLine;
+                    }
+                });
+                ctx.fillText(line.trim(), cx, lineY);
+            });
+
+            // --- Footer ---
+            const footerY = mapH + 115;
+            ctx.fillStyle = 'rgba(255,255,255,0.06)';
+            ctx.fillRect(0, footerY, mapW, 15);
+            ctx.font = '11px monospace';
+            ctx.fillStyle = 'rgba(255,255,255,0.3)';
+            ctx.textAlign = 'center';
+            ctx.fillText('Generated by JUSTASK AI • Your Career, Your Roadmap', mapW / 2, footerY + 8);
+
+            // --- Download ---
+            const link = document.createElement('a');
+            link.download = `justask-roadmap-${(activeSession?.role || 'career').replace(/\s+/g, '-').toLowerCase()}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        } catch (err) {
+            console.error("Export failed:", err);
+            alert("Export failed. Please try again.");
+        } finally {
+            setIsExporting(false);
+        }
+    };
 
     // Local state for nodes to allow dragging
     const [localNodes, setLocalNodes] = useState([])
@@ -44,10 +239,10 @@ export function MetroMap() {
     const [showFABMenu, setShowFABMenu] = useState(false)
 
     // Derive selected task from store to ensure reactivity
-    const selectedTask = currentTaskIds && roadmap ?
+    const selectedTask = (currentTaskIds && roadmap?.nodes) ?
         roadmap.nodes.find(n => n.id === currentTaskIds.nodeId)
-            ?.subNodes.find(s => s.id === currentTaskIds.subNodeId)
-            ?.tasks[currentTaskIds.taskIndex]
+            ?.subNodes?.find(s => s.id === currentTaskIds.subNodeId)
+            ?.tasks?.[currentTaskIds.taskIndex]
         : null
 
     // Inject IDs into the derived task object for TaskThreadView to use
@@ -106,7 +301,7 @@ export function MetroMap() {
 
     if (!roadmap) return null
 
-    const allNodesDone = roadmap.nodes.every(n => n.status === 'completed');
+    const allNodesDone = roadmap.nodes?.every(n => n.status === 'completed') || false;
 
     const toggleNode = (nodeId) => {
         // Allow interaction even if all nodes are done. 
@@ -167,6 +362,7 @@ export function MetroMap() {
                                         >
                                             {[
                                                 { icon: <CalendarCheck size={20} />, label: "Today's Quest", action: () => { setShowQuests(true); setShowFABMenu(false); } },
+                                                { icon: <Download size={20} />, label: isExporting ? 'Capturing...' : 'Download Roadmap', action: handleExport },
                                                 ...(!activeSession?.isStolen ? [{ icon: <Share2 size={20} />, label: isPublishing ? 'Uploading...' : 'Publish to Exchange', action: handlePublish }] : []),
                                                 { icon: <MessageCircleQuestion size={20} />, label: 'AI Explain', action: () => { } },
                                                 { icon: <BookMarked size={20} />, label: 'Review Later', action: () => { } },
@@ -208,7 +404,7 @@ export function MetroMap() {
 
 
                             <TransformComponent wrapperClass="w-full h-full" contentClass="w-full h-full">
-                                <div className="relative min-w-[2500px] min-h-[1500px] bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:20px_20px] p-[200px]">
+                                <div ref={exportRef} className="relative min-w-[2500px] min-h-[1500px] bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:20px_20px] p-[200px]">
 
                                     <svg className="absolute top-0 left-0 w-full h-full pointer-events-none overflow-visible">
                                         {/* Gradient definitions */}

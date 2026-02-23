@@ -164,7 +164,11 @@ export async function generateRoadmap(role, knownSkills, gapSkills) {
     Structure:
     - Main Nodes: Major milestones (e.g., "Foundations", "Advanced Logic").
     - Sub Nodes: Exactly 2 specific topics per Main Node.
-    - Tasks: 1-2 actionable resources/tasks per Sub Node. Tasks MUST include a title, detail, and a relevant link.
+    - Tasks: 1-2 actionable resources per Sub Node. 
+    
+    CRITICAL: Each task MUST have a "resources" array containing at least 2 objects:
+    - { "type": "video", "title": "Specific YouTube Tutorial Title", "url": "https://youtube.com/..." }
+    - { "type": "doc", "title": "Official Documentation or Guide", "url": "..." }
 
     Status Rules:
     - Set the FIRST node's status to "active".
@@ -187,11 +191,14 @@ export async function generateRoadmap(role, knownSkills, gapSkills) {
                         {
                             "title": "Task Title",
                             "detail": "One sentence description of what to do.",
-                            "link": "https://example.com/resource",
-                            "breakdown": "A concise paragraph (3-4 sentences) explaining the core concept in depth. Focus on the 'why' and 'how'. Avoid generic text.",
+                            "resources": [
+                                { "type": "video", "title": "...", "url": "..." },
+                                { "type": "doc", "title": "...", "url": "..." }
+                            ],
+                            "breakdown": "A concise paragraph explaining the core concept.",
                             "practice": {
-                                "question": "A specific technical question to test understanding.",
-                                "hint": "A helpful hint pointing to the answer."
+                                "question": "...",
+                                "hint": "..."
                             }
                         }
                     ]
@@ -201,9 +208,7 @@ export async function generateRoadmap(role, knownSkills, gapSkills) {
       ]
     }
     
-    Coordinates (x,y) for Main Nodes should flow from left (100) to right (1500), with good y-spacing (100-600) to avoid clutter. 
-    Keep nodes spaced far apart (at least 200px gap).
-    Do NOT generate coordinates for subNodes; the UI will handle that.
+    Coordinates (x,y) for Main Nodes should flow from left (100) to right (1500), with good y-spacing (100-600). 
   `;
 
     try {
@@ -218,6 +223,36 @@ export async function generateRoadmap(role, knownSkills, gapSkills) {
     } catch (error) {
         console.error("AI Roadmap Error:", error);
         return { nodes: [] };
+    }
+}
+
+// Fetch Job Market Insights
+export async function getCareerInsights(role) {
+    const prompt = `
+    Analyze the job market for the role: "${role}".
+    Provide realistic, data-driven insights.
+    
+    Output strictly JSON:
+    {
+      "salaryRange": { "entry": "₹X-Y LPA", "mid": "₹A-B LPA", "senior": "₹C-D+ LPA" },
+      "marketDemand": "High | Steady | Niche",
+      "topSkills": ["Skill 1", "Skill 2", "Skill 3"],
+      "hiringCompanies": ["Company A", "Company B", "Company C"],
+      "growthPotential": "Description of career trajectory."
+    }
+    `;
+
+    try {
+        const client = getClient();
+        const completion = await client.chat.completions.create({
+            model: getModel(),
+            messages: [{ role: "user", content: prompt }],
+            response_format: { type: "json_object" }
+        });
+        return JSON.parse(completion.choices[0].message.content);
+    } catch (error) {
+        console.error("Career Insights Error:", error);
+        return null;
     }
 }
 

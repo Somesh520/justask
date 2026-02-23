@@ -17,6 +17,39 @@
   font-family: 'JetBrains Mono', monospace;
   background-color: var(--color-brutal-white);
   color: var(--color-brutal-black);
+
+  /* Default Theme Vars */
+  --bg-main: var(--color-brutal-white);
+  --text-main: var(--color-brutal-black);
+  --accent-primary: var(--color-brutal-yellow);
+}
+
+[data-theme='hacker'] {
+  --bg-main: #0a0a0a;
+  --text-main: #00ff41;
+  --accent-primary: #00ff41;
+  --color-brutal-white: #0a0a0a;
+  --color-brutal-black: #00ff41;
+  --color-brutal-blue: #003b00;
+  --color-brutal-yellow: #00ff41;
+  background-color: #0a0a0a;
+}
+
+[data-theme='cyberpunk'] {
+  --bg-main: #1a1a2e;
+  --text-main: #e94560;
+  --accent-primary: #0f3460;
+  --color-brutal-white: #1a1a2e;
+  --color-brutal-black: #e94560;
+  --color-brutal-blue: #16213e;
+  --color-brutal-yellow: #f9d423;
+  background-color: #1a1a2e;
+}
+
+:root {
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  transition: all 0.3s ease-in-out;
 }
 
 body {

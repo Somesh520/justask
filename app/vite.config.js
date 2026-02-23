@@ -8,4 +8,19 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  server: {
+    proxy: {
+      '/roadmap-api': {
+        target: 'https://roadmap.sh',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/roadmap-api/, '/api'),
+      },
+      '/roadmap-content': {
+        target: 'https://roadmap.sh',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/roadmap-content/, ''),
+      },
+    },
+  },
 })
+

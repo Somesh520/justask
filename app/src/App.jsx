@@ -24,6 +24,8 @@ import { GauntletOverlay } from './features/gauntlet/GauntletOverlay';
 import { GauntletWorkspace } from './features/gauntlet/GauntletWorkspace';
 import { TodaysQuest } from './features/roadmap/TodaysQuest';
 import { ApiKeyModal } from './components/common/ApiKeyModal';
+import { MarketIntelPanel } from './features/roadmap/MarketIntelPanel';
+import { getAvailableRoadmaps } from './lib/roadmapService';
 
 function App() {
   // Destructure all necessary state and actions from your Zustand store
@@ -38,6 +40,7 @@ function App() {
     sessions,
     activeSessionId,
     createSession,           // For creating new sessions (triggers sync)
+    createOfficialRoadmapSession, // For creating sessions from roadmap.sh
     setQuestions,            // For setting assessment questions
     user,
     isLoggedIn,              // Replaces 'isAuthenticated' for auth status
@@ -52,6 +55,12 @@ function App() {
     setShowQuests,
     setPhase,
     compileManifest,
+    marketIntel,
+    showIntel,
+    setShowIntel,
+    fetchMarketIntel,
+    theme,
+    setTheme,
     // API & Demo Mode State
     apiConfig,
     demoMode,
@@ -64,6 +73,15 @@ function App() {
   const [showProfile, setShowProfile] = useState(false);
   const [replanDays, setReplanDays] = useState(7);
   const [soundOn, setSoundOn] = useState(false);
+  const [showOfficialPicker, setShowOfficialPicker] = useState(false);
+  const [officialLoading, setOfficialLoading] = useState(null); // slug or null
+
+  // Fetch Market Intel when entering roadmap phase
+  useEffect(() => {
+    if (phase === 'roadmap' && activeSession?.role && !marketIntel) {
+      fetchMarketIntel(activeSession.role);
+    }
+  }, [phase, activeSession?.role]);
 
   // ===============================================
   // Firestore Data Fetching on Auth State Change
@@ -267,6 +285,11 @@ function App() {
   // Safe display for total days
   const displayTotalDays = isNaN(totalDays) ? '90' : totalDays;
 
+  // Apply Theme
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+  }, [theme]);
+
   // Find current focus: first incomplete task across all nodes
   const currentFocusTask = useMemo(() => {
     if (!activeSession?.roadmap?.nodes) return null;
@@ -373,6 +396,27 @@ function App() {
               <span className="font-black text-xs uppercase hidden group-hover:block">Daily Ritual</span>
             </button>
           )}
+
+          {/* Theme Switcher */}
+          {isLoggedIn && (
+            <div className="flex flex-col gap-2 bg-white/50 p-1 border-2 border-black shadow-brutal">
+              <button
+                onClick={() => setTheme('default')}
+                className={`w-6 h-6 border-2 border-black transition-all hover:scale-110 bg-white ${theme === 'default' ? 'ring-2 ring-brutal-yellow' : ''}`}
+                title="Default Theme"
+              />
+              <button
+                onClick={() => setTheme('hacker')}
+                className={`w-6 h-6 border-2 border-black transition-all hover:scale-110 bg-[#00ff41] ${theme === 'hacker' ? 'ring-2 ring-white' : ''}`}
+                title="Hacker Theme"
+              />
+              <button
+                onClick={() => setTheme('cyberpunk')}
+                className={`w-6 h-6 border-2 border-black shadow-brutal transition-all hover:scale-110 bg-[#e94560] ${theme === 'cyberpunk' ? 'ring-2 ring-white' : ''}`}
+                title="Cyberpunk Theme"
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -384,6 +428,11 @@ function App() {
       />
 
       <div className="z-10 w-full max-w-7xl flex flex-col items-center gap-6">
+
+        {/* Market Intelligence Panel */}
+        {phase === 'roadmap' && showIntel && (
+          <MarketIntelPanel data={marketIntel} onClose={() => setShowIntel(false)} />
+        )}
 
         {/* Dynamic Header */}
         {showExchange ? null : phase === 'roadmap' ? (
@@ -493,6 +542,68 @@ function App() {
                 {phase === 'landing' && (
                   <div className="flex flex-col items-center gap-16">
                     <GoalInput onSubmit={handleGoalSubmit} disabled={!isInitialLoadComplete} />
+
+                    {/* Official Roadmaps Picker */}
+                    <div className="w-full max-w-3xl">
+                      <motion.button
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => setShowOfficialPicker(!showOfficialPicker)}
+                        className="w-full px-8 py-5 bg-brutal-blue text-white border-4 border-black font-black text-xl uppercase shadow-[6px_6px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all flex items-center justify-center gap-3"
+                      >
+                        <span className="text-2xl">🗺️</span>
+                        {showOfficialPicker ? 'HIDE CURATED ROADMAPS' : 'BROWSE CURATED ROADMAPS'}
+                        <span className="text-xs bg-black text-brutal-yellow px-2 py-1 rounded-sm ml-2">AI POWERED</span>
+                      </motion.button>
+
+                      <AnimatePresence>
+                        {showOfficialPicker && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                            className="overflow-hidden"
+                          >
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-4 p-4 bg-white border-4 border-black">
+                              {getAvailableRoadmaps().map(rm => (
+                                <motion.button
+                                  key={rm.slug}
+                                  whileHover={{ scale: 1.05 }}
+                                  whileTap={{ scale: 0.95 }}
+                                  disabled={officialLoading !== null}
+                                  onClick={async () => {
+                                    setOfficialLoading(rm.slug);
+                                    try {
+                                      await createOfficialRoadmapSession(rm.slug);
+                                    } catch (err) {
+                                      alert(`Failed to load roadmap: ${err.message}`);
+                                    } finally {
+                                      setOfficialLoading(null);
+                                      setShowOfficialPicker(false);
+                                    }
+                                  }}
+                                  className={`p-4 border-2 border-black font-bold text-left transition-all ${officialLoading === rm.slug
+                                    ? 'bg-brutal-yellow animate-pulse'
+                                    : officialLoading !== null
+                                      ? 'opacity-50 cursor-not-allowed bg-gray-100'
+                                      : 'bg-white hover:bg-brutal-yellow shadow-brutal hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none'
+                                    }`}
+                                >
+                                  <div className="text-2xl mb-1">{rm.icon}</div>
+                                  <div className="font-mono text-sm uppercase tracking-wide">{rm.title}</div>
+                                  {officialLoading === rm.slug && (
+                                    <div className="text-xs mt-1 font-mono text-gray-600 animate-pulse">Loading...</div>
+                                  )}
+                                </motion.button>
+                              ))}
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
 
                     {isLoggedIn && (
                       <motion.button

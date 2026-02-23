@@ -85,7 +85,11 @@ export const useStore = create((set, get) => ({
     showManifest: false,    // Toggles the Shipping Manifest view
     manifestData: null,     // Holds the AI-generated manifest
     showQuests: false,      // Toggles the Daily Ritual / Quest panel
-    reviewQueue: [],        // List of flagged tasks for later review { nodeId, subNodeId, taskIndex, flaggedAt, title, parentTitle }
+    reviewQueue: [],        // List of flagged tasks for later review
+    marketIntel: null,      // Stores AI-generated career insights
+    showIntel: true,        // Toggles visibility of the intel panel
+    certificates: [],       // List of earned mastery certificates
+    theme: 'default',       // Current application theme (default, hacker, cyberpunk)
 
     isInitialLoadComplete: false, // Tracks if first Firestore hydration is done
 
@@ -155,6 +159,43 @@ export const useStore = create((set, get) => ({
 
     setShowManifest: (show) => set({ showManifest: show }),
     setShowQuests: (show) => set({ showQuests: show }),
+    setShowIntel: (show) => set({ showIntel: show }),
+
+    fetchMarketIntel: async (role) => {
+        if (!role) return;
+        try {
+            const { getCareerInsights } = await import('./gemini');
+            const intel = await getCareerInsights(role);
+            if (intel) set({ marketIntel: intel, showIntel: true });
+        } catch (err) {
+            console.error("Market Intel fetch failed:", err);
+        }
+    },
+
+    generateCertificate: async (sessionId) => {
+        const state = get();
+        const session = state.sessions[sessionId];
+        if (!session || !state.user) return;
+
+        const newCert = {
+            id: `cert-${Date.now()}-${generateId()}`,
+            userId: state.user.uid,
+            userName: state.user.displayName || 'Learner',
+            role: session.role || session.goal,
+            issuedAt: new Date().toISOString(),
+            sessionId: sessionId
+        };
+
+        set(s => ({
+            certificates: [...s.certificates, newCert]
+        }));
+
+        // Sync to Firestore would go here in a full prod app
+        get().syncToFirestore();
+        return newCert;
+    },
+
+    setTheme: (theme) => set({ theme }),
 
     dismissGauntlet: (sessionId) => {
         set(s => ({
@@ -302,6 +343,66 @@ export const useStore = create((set, get) => ({
             }
         }));
         get().syncToFirestore(); // Trigger background sync after creating session and updating metrics
+        return id;
+    },
+
+    // Create a session from an official roadmap.sh roadmap (skips assessment)
+    createOfficialRoadmapSession: async (slug) => {
+        const { fetchOfficialRoadmap, transformToAppFormat, getAvailableRoadmaps } = await import('./roadmapService');
+        const meta = getAvailableRoadmaps().find(r => r.slug === slug);
+        const title = meta?.title || slug;
+
+        const id = generateId();
+        // Create session shell immediately so UI can react
+        const newSession = {
+            id,
+            goal: `Master ${title}`,
+            role: title,
+            deadline: null,
+            status: 'active',
+            phase: 'roadmap', // Skip assessment and go directly to roadmap
+            questions: [],
+            currentQuestionIndex: 0,
+            knownSkills: [],
+            gapSkills: [],
+            roadmap: null, // Will be filled after fetch
+            createdAt: new Date().toISOString(),
+            streak: 0,
+            lastActiveDate: null,
+            dailyLog: {},
+            isOfficial: true, // Flag to identify official roadmaps
+        };
+
+        set(state => ({
+            sessions: { ...state.sessions, [id]: newSession },
+            activeSessionId: id,
+            engagementMetrics: {
+                ...state.engagementMetrics,
+                totalProjects: state.engagementMetrics.totalProjects + 1
+            }
+        }));
+
+        try {
+            const apiData = await fetchOfficialRoadmap(slug);
+            const roadmap = await transformToAppFormat(apiData, slug);
+
+            set(state => ({
+                sessions: {
+                    ...state.sessions,
+                    [id]: { ...state.sessions[id], roadmap }
+                }
+            }));
+            get().syncToFirestore();
+        } catch (error) {
+            console.error('Failed to fetch official roadmap:', error);
+            // Remove the failed session
+            set(state => {
+                const { [id]: _, ...rest } = state.sessions;
+                return { sessions: rest, activeSessionId: null };
+            });
+            throw error; // Re-throw so UI can handle it
+        }
+
         return id;
     },
 

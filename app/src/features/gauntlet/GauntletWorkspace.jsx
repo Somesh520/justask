@@ -10,9 +10,11 @@ import { CrisisTerminal } from './CrisisTerminal';
 import { HostileNegotiation } from './HostileNegotiation';
 import { ResourceSqueeze } from './ResourceSqueeze';
 import { RedPenTeardown } from './RedPenTeardown';
+import confetti from 'canvas-confetti';
+import { MasteryCertificate } from '../profile/MasteryCertificate';
 
 export function GauntletWorkspace() {
-    const { activeSessionId, sessions, submitGauntlet, dismissGauntlet } = useStore();
+    const { activeSessionId, sessions, submitGauntlet, dismissGauntlet, generateCertificate } = useStore();
     const session = sessions[activeSessionId];
     const gauntlet = session?.gauntlet;
 
@@ -24,34 +26,17 @@ export function GauntletWorkspace() {
 
     const [isVerifying, setIsVerifying] = useState(false);
     const [result, setResult] = useState(null);
+    const [showCertificate, setShowCertificate] = useState(false);
+    const [generatedCert, setGeneratedCert] = useState(null);
 
     if (!gauntlet) return null;
 
-    // Helper to determine engine even for legacy data
+    // ... existing getEffectiveType ...
     const getEffectiveType = () => {
-        // 1. Trust explicit valid types
         const validTypes = ['coding_sandbox', 'crisis_terminal', 'hostile_negotiation', 'resource_squeeze', 'red_pen_teardown'];
-        if (gauntlet.type && validTypes.includes(gauntlet.type)) {
-            return gauntlet.type;
-        }
-
-        // 2. Handle legacy mappings
+        if (gauntlet.type && validTypes.includes(gauntlet.type)) return gauntlet.type;
         if (gauntlet.type === 'technical') return 'coding_sandbox';
-
-        // 3. Infer from Goal string if type is missing/unknown
-        const goal = session.goal || '';
-        const lowerGoal = goal.toLowerCase();
-        const codingKeywords = [
-            'developer', 'engineer', 'coding', 'programmer', 'software',
-            'react', 'web', 'app', 'python', 'java', 'node', 'stack', 'tech'
-        ];
-
-        if (codingKeywords.some(k => lowerGoal.includes(k))) {
-            return 'coding_sandbox';
-        }
-
-        // 4. Default fallback
-        return 'physical';
+        return 'coding_sandbox'; // Default
     };
 
     const effectiveType = getEffectiveType();
@@ -65,16 +50,7 @@ export function GauntletWorkspace() {
                 submission = { code: files, type: 'technical' };
                 break;
             case 'crisis_terminal':
-                submission = { type: 'crisis', result: 'Survived' }; // simplified for demo
-                break;
-            case 'hostile_negotiation':
-                submission = { type: 'negotiation', result: 'Won' };
-                break;
-            case 'resource_squeeze':
-                submission = { type: 'resource', result: 'Budget Balanced' };
-                break;
-            case 'red_pen_teardown':
-                submission = { type: 'red_pen', result: 'Fixed' };
+                submission = { type: 'crisis', result: 'Survived' };
                 break;
             default:
                 submission = { reflection, type: 'physical' };
@@ -83,6 +59,17 @@ export function GauntletWorkspace() {
         const res = await submitGauntlet(activeSessionId, submission);
         setResult(res);
         setIsVerifying(false);
+
+        if (res.passed) {
+            confetti({
+                particleCount: 150,
+                spread: 70,
+                origin: { y: 0.6 },
+                colors: ['#FFE633', '#22C55E', '#3B82F6', '#EF4444']
+            });
+            const cert = await generateCertificate(activeSessionId);
+            setGeneratedCert(cert);
+        }
     };
 
     // Render the correct engine
@@ -225,10 +212,10 @@ export function GauntletWorkspace() {
                             <div className="flex flex-col gap-4">
                                 {result.passed ? (
                                     <button
-                                        onClick={() => window.location.href = '/'}
-                                        className="w-full bg-brutal-green text-black border-4 border-black py-4 font-black text-2xl uppercase shadow-[8px_8px_0px_0px_#000] hover:translate-y-1 hover:shadow-none transition-all"
+                                        onClick={() => setShowCertificate(true)}
+                                        className="w-full bg-brutal-green text-black border-4 border-black py-4 font-black text-2xl uppercase shadow-[8px_8px_0px_0px_#000] hover:translate-y-1 hover:shadow-none transition-all flex items-center justify-center gap-3"
                                     >
-                                        CLAIM MY GLORY
+                                        <Trophy size={24} /> CLAIM MY GLORY
                                     </button>
                                 ) : (
                                     <button
@@ -243,6 +230,17 @@ export function GauntletWorkspace() {
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            {/* Certificate Display */}
+            {showCertificate && generatedCert && (
+                <MasteryCertificate
+                    certificate={generatedCert}
+                    onClose={() => {
+                        setShowCertificate(false);
+                        window.location.href = '/';
+                    }}
+                />
+            )}
         </div>
     );
 }

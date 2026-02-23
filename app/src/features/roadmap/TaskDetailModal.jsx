@@ -7,7 +7,7 @@ export function TaskDetailModal({ task, onClose }) {
     // Helper to handle legacy string tasks
     const title = typeof task === 'string' ? task : task.title
     const detail = typeof task === 'string' ? "No details available." : task.detail
-    const link = typeof task === 'string' ? null : task.link
+    const resources = typeof task === 'string' ? [] : (task.resources || (task.link ? [{ type: 'doc', title: 'Start Resource', url: task.link }] : []))
 
     return (
         <AnimatePresence>
@@ -39,24 +39,37 @@ export function TaskDetailModal({ task, onClose }) {
                         <span className="font-mono text-xs font-bold bg-brutal-yellow px-2 py-1 border-2 border-black inline-block mb-2 transform -rotate-2 shadow-[2px_2px_0px_0px_#000]">
                             TASK DETAILS
                         </span>
-                        <h2 className="text-3xl font-black uppercase leading-tight">{title}</h2>
+                        <h2 className="text-2xl font-black uppercase leading-tight">{title}</h2>
                     </div>
 
                     <div className="space-y-6">
-                        <div className="bg-gray-50 p-4 border-l-4 border-black font-mono text-sm leading-relaxed">
+                        <div className="bg-gray-50 p-4 border-l-4 border-black font-mono text-xs leading-relaxed max-h-40 overflow-y-auto">
                             {detail}
                         </div>
 
-                        {link && (
-                            <a
-                                href={link}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center justify-between w-full bg-brutal-blue text-white p-4 font-bold border-3 border-black shadow-brutal hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none transition-all group"
-                            >
-                                <span className="uppercase">Start Resource</span>
-                                <ExternalLink size={20} className="group-hover:rotate-45 transition-transform" />
-                            </a>
+                        {resources.length > 0 && (
+                            <div className="space-y-3">
+                                <h3 className="text-sm font-black uppercase tracking-widest text-gray-400">Resources</h3>
+                                <div className="grid grid-cols-1 gap-3">
+                                    {resources.map((res, i) => (
+                                        <a
+                                            key={i}
+                                            href={res.url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex items-center justify-between w-full bg-white hover:bg-black hover:text-white p-3 font-bold border-2 border-black transition-all group"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className={`p-1 border-2 border-black ${res.type === 'video' ? 'bg-brutal-red' : 'bg-brutal-blue'}`}>
+                                                    <ExternalLink size={14} className="text-white" />
+                                                </div>
+                                                <span className="text-xs uppercase truncate w-40">{res.title}</span>
+                                            </div>
+                                            <span className="text-[10px] font-mono text-gray-400 group-hover:text-gray-300 uppercase">{res.type}</span>
+                                        </a>
+                                    ))}
+                                </div>
+                            </div>
                         )}
 
                         <div className="flex items-center gap-3 pt-4 border-t-2 border-dashed border-gray-300">
